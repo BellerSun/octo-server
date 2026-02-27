@@ -2326,6 +2326,32 @@ func (u *User) addFileHelperFriend(uid string) error {
 	return nil
 }
 
+// addBotFatherFriend 处理注册用户和BotFather成为好友
+func (u *User) addBotFatherFriend(uid string) error {
+	const botFatherUID = "botfather"
+	if uid == "" {
+		return errors.New("用户ID不能为空")
+	}
+	isFriend, err := u.friendDB.IsFriend(uid, botFatherUID)
+	if err != nil {
+		u.Error("查询用户与BotFather关系失败")
+		return err
+	}
+	if !isFriend {
+		version := u.ctx.GenSeq(common.FriendSeqKey)
+		err := u.friendDB.Insert(&FriendModel{
+			UID:     uid,
+			ToUID:   botFatherUID,
+			Version: version,
+		})
+		if err != nil {
+			u.Error("注册用户和BotFather成为好友失败")
+			return err
+		}
+	}
+	return nil
+}
+
 // addSystemFriend 处理注册用户和系统账号互为好友
 func (u *User) addSystemFriend(uid string) error {
 
@@ -2630,6 +2656,10 @@ func (u *User) createUserWithRespAndTx(registerSpanCtx context.Context, createUs
 	if err != nil {
 		u.Error("添加注册用户和文件助手为好友关系失败", zap.Error(err))
 		return nil, err
+	}
+	err = u.addBotFatherFriend(createUser.UID)
+	if err != nil {
+		u.Warn("添加注册用户和BotFather为好友关系失败", zap.Error(err))
 	}
 	inviteCode := ""
 	inviteUID := ""

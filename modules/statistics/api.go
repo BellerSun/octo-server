@@ -82,12 +82,20 @@ func (s *Statistics) countNum(c *wkhttp.Context) {
 		c.ResponseError(errors.New("查询总在线用户数量错误"))
 		return
 	}
+	// 查询机器人总数
+	var botTotalCount int64
+	err = s.ctx.DB().Select("count(*)").From("robot").Where("status=1").LoadOne(&botTotalCount)
+	if err != nil {
+		s.Error("查询机器人总数错误", zap.Error(err))
+		botTotalCount = 0
+	}
 	c.Response(&countNum{
 		UserTotalCount:   totalUserCount,
 		RegisterCount:    registerCount,
 		GroupTotalCount:  totalGroupCount,
 		GroupCreateCount: groupCreatedCount,
 		OnlineTotalCount: onlineCount,
+		BotTotalCount:    botTotalCount,
 	})
 }
 
@@ -139,4 +147,5 @@ type countNum struct {
 	GroupTotalCount  int64 `json:"group_total_count"`  // 群总数
 	GroupCreateCount int64 `json:"group_create_count"` // 群创建数量
 	OnlineTotalCount int64 `json:"online_total_count"` // 总在线数量
+	BotTotalCount    int64 `json:"bot_total_count"`    // 机器人总数
 }
