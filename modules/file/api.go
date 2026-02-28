@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -127,24 +130,50 @@ func (f *File) uploadFile(c *wkhttp.Context) {
 		c.ResponseError(err)
 		return
 	}
-	file, _, err := c.Request.FormFile("file")
+
+	// 限制请求体大小，防止大文件 DoS
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, MaxFileSize+1024*1024)
+
+	file, fileHeader, err := c.Request.FormFile("file")
 	if err != nil {
 		f.Error("读取文件失败！", zap.Error(err))
 		c.ResponseError(errors.New("读取文件失败！"))
 		return
 	}
+	defer file.Close()
+
+	// 文件大小检查
+	if fileHeader.Size > MaxFileSize {
+		f.Warn("文件大小超出限制", zap.Int64("size", fileHeader.Size), zap.Int64("max", MaxFileSize))
+		c.ResponseError(fmt.Errorf("文件大小不能超过%dMB", MaxFileSize/1024/1024))
+		return
+	}
+
+	// 文件扩展名检查
+	fileName := sanitizeFilename(fileHeader.Filename)
+	ext := strings.ToLower(filepath.Ext(fileName))
+	if ext == "" {
+		f.Warn("上传的文件没有扩展名", zap.String("filename", fileName))
+		c.ResponseError(errors.New("文件必须包含扩展名"))
+		return
+	}
+	if IsBlockedExtension(ext) {
+		f.Warn("上传了禁止的文件类型", zap.String("filename", fileName), zap.String("ext", ext))
+		c.ResponseError(fmt.Errorf("禁止上传%s类型的文件", ext))
+		return
+	}
+	if !IsAllowedExtension(ext) {
+		f.Warn("上传了不支持的文件类型", zap.String("filename", fileName), zap.String("ext", ext))
+		c.ResponseError(fmt.Errorf("不支持上传%s类型的文件", ext))
+		return
+	}
+
 	path := uploadPath
 	if !strings.HasPrefix(path, "/") {
 		path = fmt.Sprintf("/%s", path)
 	}
 	var sign []byte
 	if signatureInt == 1 {
-		// bytes, err := ioutil.ReadAll(file)
-		// if err != nil {
-		// 	f.Error("读取文件错误", zap.Error(err))
-		// 	c.ResponseError(errors.New("读取文件错误"))
-		// 	return
-		// }
 		h := sha512.New()
 		_, err := io.Copy(h, file)
 		if err != nil {
@@ -153,8 +182,6 @@ func (f *File) uploadFile(c *wkhttp.Context) {
 			return
 		}
 		sign = h.Sum(nil)
-		//	sign = sha512.Sum512(bytes)
-
 	}
 	_, err = f.service.UploadFile(fmt.Sprintf("%s%s", fileType, path), contentType, func(w io.Writer) error {
 		_, err := file.Seek(0, io.SeekStart)
@@ -165,25 +192,24 @@ func (f *File) uploadFile(c *wkhttp.Context) {
 		_, err = io.Copy(w, file)
 		return err
 	})
-
-	defer file.Close()
 	if err != nil {
 		f.Error("上传文件失败！", zap.Error(err))
 		c.ResponseError(errors.New("上传文件失败！"))
 		return
 	}
+
+	previewPath := fmt.Sprintf("file/preview/%s%s", fileType, path)
+	resp := map[string]interface{}{
+		"path": previewPath,
+		"name": fileName,
+		"size": fileHeader.Size,
+		"ext":  ext,
+	}
 	if signatureInt == 1 {
 		encoded := base64.StdEncoding.EncodeToString(sign[:])
-		fmt.Print("编码文件", encoded)
-		c.Response(map[string]interface{}{
-			"path":   fmt.Sprintf("file/preview/%s%s", fileType, path),
-			"sha512": encoded,
-		})
-	} else {
-		c.Response(map[string]string{
-			"path": fmt.Sprintf("file/preview/%s%s", fileType, path),
-		})
+		resp["sha512"] = encoded
 	}
+	c.Response(resp)
 }
 
 // 获取文件
@@ -200,6 +226,30 @@ func (f *File) getFile(c *wkhttp.Context) {
 			filename = paths[len(paths)-1]
 		}
 	}
+	// 清洗文件名，防止 CRLF 注入和路径穿越
+	filename = sanitizeFilename(filename)
+
+	// 设置 Content-Type，未知扩展名默认为 application/octet-stream
+	ext := strings.ToLower(filepath.Ext(filename))
+	contentType := mime.TypeByExtension(ext)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	c.Header("Content-Type", contentType)
+
+	// 对未知扩展名强制 attachment（防止浏览器解析恶意内容）
+	disposition := c.Query("disposition")
+	if mime.TypeByExtension(ext) == "" {
+		disposition = "attachment"
+	}
+	// 构造安全的 Content-Disposition，使用 RFC 5987 编码处理非 ASCII 文件名
+	escapedFilename := url.PathEscape(filename)
+	if disposition == "attachment" {
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", escapedFilename))
+	} else {
+		c.Header("Content-Disposition", fmt.Sprintf("inline; filename*=UTF-8''%s", escapedFilename))
+	}
+
 	downloadURL, err := f.service.DownloadURL(ph, filename)
 	if err != nil {
 		c.ResponseError(err)
