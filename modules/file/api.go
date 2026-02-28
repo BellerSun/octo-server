@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -127,24 +129,43 @@ func (f *File) uploadFile(c *wkhttp.Context) {
 		c.ResponseError(err)
 		return
 	}
-	file, _, err := c.Request.FormFile("file")
+	file, fileHeader, err := c.Request.FormFile("file")
 	if err != nil {
 		f.Error("读取文件失败！", zap.Error(err))
 		c.ResponseError(errors.New("读取文件失败！"))
 		return
 	}
+	defer file.Close()
+
+	// 文件大小检查
+	if fileHeader.Size > MaxFileSize {
+		f.Warn("文件大小超出限制", zap.Int64("size", fileHeader.Size), zap.Int64("max", MaxFileSize))
+		c.ResponseError(fmt.Errorf("文件大小不能超过%dMB", MaxFileSize/1024/1024))
+		return
+	}
+
+	// 文件扩展名检查
+	fileName := fileHeader.Filename
+	ext := strings.ToLower(filepath.Ext(fileName))
+	if ext != "" {
+		if IsBlockedExtension(ext) {
+			f.Warn("上传了禁止的文件类型", zap.String("filename", fileName), zap.String("ext", ext))
+			c.ResponseError(fmt.Errorf("禁止上传%s类型的文件", ext))
+			return
+		}
+		if !IsAllowedExtension(ext) {
+			f.Warn("上传了不支持的文件类型", zap.String("filename", fileName), zap.String("ext", ext))
+			c.ResponseError(fmt.Errorf("不支持上传%s类型的文件", ext))
+			return
+		}
+	}
+
 	path := uploadPath
 	if !strings.HasPrefix(path, "/") {
 		path = fmt.Sprintf("/%s", path)
 	}
 	var sign []byte
 	if signatureInt == 1 {
-		// bytes, err := ioutil.ReadAll(file)
-		// if err != nil {
-		// 	f.Error("读取文件错误", zap.Error(err))
-		// 	c.ResponseError(errors.New("读取文件错误"))
-		// 	return
-		// }
 		h := sha512.New()
 		_, err := io.Copy(h, file)
 		if err != nil {
@@ -153,8 +174,6 @@ func (f *File) uploadFile(c *wkhttp.Context) {
 			return
 		}
 		sign = h.Sum(nil)
-		//	sign = sha512.Sum512(bytes)
-
 	}
 	_, err = f.service.UploadFile(fmt.Sprintf("%s%s", fileType, path), contentType, func(w io.Writer) error {
 		_, err := file.Seek(0, io.SeekStart)
@@ -165,25 +184,24 @@ func (f *File) uploadFile(c *wkhttp.Context) {
 		_, err = io.Copy(w, file)
 		return err
 	})
-
-	defer file.Close()
 	if err != nil {
 		f.Error("上传文件失败！", zap.Error(err))
 		c.ResponseError(errors.New("上传文件失败！"))
 		return
 	}
+
+	previewPath := fmt.Sprintf("file/preview/%s%s", fileType, path)
+	resp := map[string]interface{}{
+		"path": previewPath,
+		"name": fileName,
+		"size": fileHeader.Size,
+		"ext":  ext,
+	}
 	if signatureInt == 1 {
 		encoded := base64.StdEncoding.EncodeToString(sign[:])
-		fmt.Print("编码文件", encoded)
-		c.Response(map[string]interface{}{
-			"path":   fmt.Sprintf("file/preview/%s%s", fileType, path),
-			"sha512": encoded,
-		})
-	} else {
-		c.Response(map[string]string{
-			"path": fmt.Sprintf("file/preview/%s%s", fileType, path),
-		})
+		resp["sha512"] = encoded
 	}
+	c.Response(resp)
 }
 
 // 获取文件
@@ -200,6 +218,22 @@ func (f *File) getFile(c *wkhttp.Context) {
 			filename = paths[len(paths)-1]
 		}
 	}
+
+	// 设置 Content-Type
+	ext := strings.ToLower(filepath.Ext(filename))
+	contentType := mime.TypeByExtension(ext)
+	if contentType != "" {
+		c.Header("Content-Type", contentType)
+	}
+
+	// 设置 Content-Disposition（inline 预览，带文件名用于下载）
+	disposition := c.Query("disposition")
+	if disposition == "attachment" {
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	} else {
+		c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", filename))
+	}
+
 	downloadURL, err := f.service.DownloadURL(ph, filename)
 	if err != nil {
 		c.ResponseError(err)
