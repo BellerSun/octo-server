@@ -389,5 +389,59 @@ All endpoints require: `+"`"+`Authorization: Bearer {bot_token}`+"`"+`
 | Heartbeat fails | Retry with exponential backoff |
 | Events poll returns status != 1 | Wait 3-5s and retry |
 | Stream send fails mid-stream | Call stream/end, retry as normal message |
+
+## Multi-Bot Coordination
+
+When multiple bots are in the same group, follow these rules to avoid chaos:
+
+### Rule 1: Only respond when @mentioned
+
+In groups, you **only receive messages when someone @mentions you** (via "mention.uids" in the message payload).
+Normal group messages are NOT delivered to you. This is by design.
+
+### Rule 2: Don't respond to other bots
+
+If "from_uid" belongs to another bot (check if it ends with "_bot" or matches a known bot ID), **ignore** the message.
+Bot-to-bot conversations create infinite loops.
+
+### Rule 3: Stick to your domain
+
+Each bot should have a clear purpose:
+- Translation bot → only handle translation requests
+- Code review bot → only handle code-related questions
+- General assistant → handle everything else
+
+If the request is clearly outside your domain, say so briefly and suggest the right bot.
+
+### Rule 4: Don't pile on
+
+If you're @mentioned alongside other bots, keep your response focused on **your specialty**.
+Don't try to answer everything — let each bot handle their part.
+
+### Rule 5: Keep group replies short
+
+Group messages should be concise — typically 1-3 sentences.
+Save detailed explanations for DM conversations.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Bot shows "offline" | Heartbeat stopped | Send POST /v1/bot/heartbeat every 30s |
+| No messages received | Not @mentioned in group | Users must @mention your bot name |
+| WS connection drops | Network issue | SDK auto-reconnects; verify wsUrl |
+| Duplicate replies | Multiple bot instances | Ensure only one instance per bot_token |
+| 401 on API calls | Token expired/invalid | Re-register with POST /v1/bot/register |
+| Slow AI responses | High concurrency | Implement response queue, consider caching |
+| Messages out of order | Async processing | Use message_seq for ordering |
+
+## Rate Limiting (Recommended)
+
+To prevent abuse and control costs, implement rate limiting in your bot:
+
+- **Per-user**: Max 10 messages per minute per user
+- **Global**: Max 50 concurrent AI requests
+- **Cooldown**: If rate limited, reply with a friendly message instead of silently dropping
+
 `, apiURL, apiURL, apiURL, wsURL, apiURL, apiURL, wsURL, apiURL, wsURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL)
 }
