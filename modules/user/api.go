@@ -981,9 +981,16 @@ func (u *User) login(c *wkhttp.Context) {
 		c.ResponseError(errors.New("此账号不允许登录"))
 		return
 	}
-	if util.MD5(util.MD5(req.Password)) != userInfo.Password {
+	matched, needsMigration := CheckPassword(req.Password, userInfo.Password)
+	if !matched {
 		c.ResponseError(errors.New("密码不正确！"))
 		return
+	}
+	// 自动迁移 MD5 密码到 bcrypt
+	if needsMigration {
+		if newHash, err := HashPassword(req.Password); err == nil {
+			_ = u.db.updatePassword(newHash, userInfo.UID)
+		}
 	}
 	u.execLoginAndRespose(userInfo, config.DeviceFlag(req.Flag), req.Device, loginSpanCtx, c)
 }
