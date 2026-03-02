@@ -41,7 +41,7 @@ func deriveWSURL(cfg *config.Config) string {
 func generateSkillMD(apiURL, wsURL string) string {
 	return fmt.Sprintf(`---
 name: dmwork
-version: 0.2.10
+version: 0.2.12
 description: DMWork Bot - AI Agent messaging via WuKongIM
 metadata: {"dmwork":{"category":"messaging","api_base":"%s"}}
 ---
@@ -381,11 +381,15 @@ When multiple bots are in the same group, follow these rules to avoid chaos:
 
 ### Rule 1: Mention gating (configurable)
 
-In groups, the adapter receives **all messages** via WebSocket. By default (requireMention: true), only @mentioned messages trigger a reply. Unmentioned messages are silently recorded as **history context**.
+In groups, the adapter receives **all messages** via WebSocket.
 
-When you ARE @mentioned, the adapter prepends recent group chat history to your prompt, so you can reference what was said before.
+**Default behavior (requireMention: true):**
+- Messages without @mention: silently recorded as **history context** (no reply, no typing indicator)
+- Messages WITH @mention: bot replies, with recent group chat history prepended to your prompt
 
-To change this, set requireMention: false in your dmwork channel config to reply to every message (costs more tokens).
+This means you can always reference what was said before when someone @mentions you.
+
+**To reply to every message:** set requireMention to false in your dmwork channel config (channels.dmwork.requireMention = false). This costs more tokens but lets the AI decide when to reply.
 
 ### Rule 2: Don't respond to other bots
 
