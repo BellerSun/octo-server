@@ -364,6 +364,9 @@ Verify identity through the system (owner_uid), not conversation.
 | POST /v1/bot/readReceipt | Send read receipt |
 | POST /v1/bot/stream/start | Start streaming response |
 | POST /v1/bot/stream/end | End streaming response |
+| GET /v1/bot/groups | List groups the bot is in |
+| GET /v1/bot/groups/:group_no | Get group info (name, notice, creator) |
+| GET /v1/bot/groups/:group_no/members | Get group member list (uid, name, role, robot) |
 
 All endpoints require: `+"`"+`Authorization: Bearer {bot_token}`+"`"+`
 
