@@ -10,18 +10,19 @@ MYSQL_CMD = "docker exec octo-mysql-1 mysql -uroot -ptsdd123456 --default-charac
 OUTPUT_DIR = "/var/www/html/dashboard"
 
 # 排除 Bot、系统账号、测试用户
-EXCLUDE_UIDS = """
-  uid NOT IN (SELECT robot_id FROM robot)
-  AND uid NOT IN ('u_10000', 'botfather', 'fileHelper')
-  AND name NOT LIKE '%%测试%%'
-  AND username NOT LIKE 'test%%'
-"""
+EXCLUDE_UIDS = "uid NOT IN (SELECT robot_id FROM robot) AND uid NOT IN ('u_10000', 'botfather', 'fileHelper') AND name NOT LIKE '%测试%' AND username NOT LIKE 'test%' AND username NOT LIKE 'demo%'"
 
 def query(sql):
+    # Write SQL to temp file to avoid shell escaping issues
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
+        f.write(sql)
+        tmpfile = f.name
     result = subprocess.run(
-        f'{MYSQL_CMD} "{sql}" im',
+        f'docker exec -i octo-mysql-1 mysql -uroot -ptsdd123456 --default-character-set=utf8mb4 -N im < {tmpfile}',
         shell=True, capture_output=True, text=True
     )
+    os.unlink(tmpfile)
     if result.returncode != 0:
         return []
     rows = []
