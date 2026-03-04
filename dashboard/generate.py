@@ -143,7 +143,7 @@ def generate_html(data):
     # Bot table rows
     bot_rows = ""
     for b in data['top_bots']:
-        owner = b.get('owner_email') or b.get('owner_name') or '-'
+        owner = b.get('owner_email') or b.get('owner_name') or '(已删除用户)'
         bot_rows += f"<tr><td>{b['name']}</td><td>{owner}</td><td>{b['week_msgs']}</td></tr>"
     if not bot_rows:
         bot_rows = "<tr><td colspan='3' style='text-align:center;color:#666;'>暂无 Bot</td></tr>"
