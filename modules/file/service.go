@@ -3,6 +3,7 @@ package file
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"errors"
 	"image"
 	"image/color"
@@ -470,11 +471,30 @@ func uploadFile(uploadURL, fileName string, copyFileWriter func(io.Writer) error
 func (s *Service) downloadImage(url string, ctx context.Context) (io.ReadCloser, error) {
 
 	s.Debug("开始下载图片！", zap.String("url", url))
+
+	// Validate URL to prevent SSRF attacks
+	if err := util.ValidateExternalURL(url); err != nil {
+		s.Error("URL validation failed", zap.String("url", url), zap.Error(err))
+		return nil, fmt.Errorf("invalid URL: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 3 {
+				return fmt.Errorf("too many redirects")
+			}
+			// Validate redirect target to prevent SSRF via redirect
+			if err := util.ValidateExternalURL(req.URL.String()); err != nil {
+				return fmt.Errorf("redirect URL validation failed: %w", err)
+			}
+			return nil
+		},
+	}
 	// resp, err := s.downloadClient.Get(url)
 	resp, err := client.Do(req)
 	// resp, err := s.downloadClient.Do(req)
