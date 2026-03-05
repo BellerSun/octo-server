@@ -71,7 +71,7 @@ func objToStr(v interface{}) string {
 		strV = fmt.Sprintf("%d", v)
 		break
 	case uint32:
-		strV = fmt.Sprintf("%s", v)
+		strV = fmt.Sprintf("%d", v)
 		break
 	case string:
 		strV = fmt.Sprintf("%s", v)
