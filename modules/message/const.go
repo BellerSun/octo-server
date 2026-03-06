@@ -6,6 +6,11 @@ const (
 	// CMDMessageErase 消息擦除
 	CMDMessageErase       = "messageEerase"
 	sensitiveWordsVersion = 1
+
+	// DefaultRevokeTimeout 默认撤回超时时间（24小时）
+	// 用户撤回自己的消息时，如果超过该时间限制则不允许撤回
+	// 管理员/群主撤回他人消息不受此限制
+	DefaultRevokeTimeout = 24 * 60 * 60 // 24 hours in seconds
 )
 const CacheReadedCountPrefix = "readedCount:" // 消息已读数量
 

@@ -18,6 +18,7 @@ import (
 	"github.com/judwhite/go-svc"
 	"github.com/robfig/cron"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 // go ldflags
@@ -189,11 +190,11 @@ func replaceWebConfig(cfg *config.Config) {
 	path := "./assets/web/js/config.js"
 	escapedURL, err := json.Marshal(cfg.External.APIBaseURL + "/")
 	if err != nil {
-		log.Error("failed to marshal APIBaseURL", "error", err)
+		log.Error("failed to marshal APIBaseURL", zap.Error(err))
 		return
 	}
 	newConfigContent := fmt.Sprintf(`const apiURL = %s`, string(escapedURL))
 	if err := os.WriteFile(path, []byte(newConfigContent), 0644); err != nil {
-		log.Error("failed to write web config", "path", path, "error", err)
+		log.Error("failed to write web config", zap.String("path", path), zap.Error(err))
 	}
 }

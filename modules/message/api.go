@@ -1505,6 +1505,17 @@ func (m *Message) revoke(c *wkhttp.Context) {
 		return
 	}
 
+	// 检查撤回时间限制
+	// 用户撤回自己消息时受时间限制，管理员/群主撤回他人消息不受限制
+	if message.FromUID == c.GetLoginUID() {
+		messageTime := time.Unix(int64(syncMsg.Timestamp), 0)
+		elapsed := time.Since(messageTime)
+		if elapsed.Seconds() > DefaultRevokeTimeout {
+			c.ResponseError(errors.New("消息已超过撤回时限！"))
+			return
+		}
+	}
+
 	m.cancelMentionReminderIfNeed(message)
 
 	messageExtra, err := m.messageExtraDB.queryWithMessageID(messageID)

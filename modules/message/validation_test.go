@@ -2,6 +2,7 @@ package message
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -108,6 +109,64 @@ func TestConstants_Message(t *testing.T) {
 	assert.Equal(t, "messageDeleted", CMDMessageDeleted)
 	assert.Equal(t, "messageEerase", CMDMessageErase) // 注意原代码有typo
 	assert.Equal(t, "readedCount:", CacheReadedCountPrefix)
+}
+
+func TestRevokeTimeout(t *testing.T) {
+	// 验证默认撤回超时时间为 24 小时（86400 秒）
+	assert.Equal(t, 24*60*60, DefaultRevokeTimeout)
+	assert.Equal(t, 86400, DefaultRevokeTimeout)
+}
+
+func TestRevokeTimeoutLogic(t *testing.T) {
+	tests := []struct {
+		name           string
+		messageTime    time.Time
+		shouldTimeout  bool
+	}{
+		{
+			name:          "message sent 1 hour ago - should NOT timeout",
+			messageTime:   time.Now().Add(-1 * time.Hour),
+			shouldTimeout: false,
+		},
+		{
+			name:          "message sent 12 hours ago - should NOT timeout",
+			messageTime:   time.Now().Add(-12 * time.Hour),
+			shouldTimeout: false,
+		},
+		{
+			name:          "message sent 23 hours ago - should NOT timeout",
+			messageTime:   time.Now().Add(-23 * time.Hour),
+			shouldTimeout: false,
+		},
+		{
+			name:          "message sent 24 hours and 1 second ago - should timeout",
+			messageTime:   time.Now().Add(-24*time.Hour - 1*time.Second),
+			shouldTimeout: true,
+		},
+		{
+			name:          "message sent 25 hours ago - should timeout",
+			messageTime:   time.Now().Add(-25 * time.Hour),
+			shouldTimeout: true,
+		},
+		{
+			name:          "message sent 1 week ago - should timeout",
+			messageTime:   time.Now().Add(-7 * 24 * time.Hour),
+			shouldTimeout: true,
+		},
+		{
+			name:          "message sent just now - should NOT timeout",
+			messageTime:   time.Now(),
+			shouldTimeout: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			elapsed := time.Since(tt.messageTime)
+			isTimeout := elapsed.Seconds() > float64(DefaultRevokeTimeout)
+			assert.Equal(t, tt.shouldTimeout, isTimeout, "timeout check mismatch for %s", tt.name)
+		})
+	}
 }
 
 func TestReminderType(t *testing.T) {
