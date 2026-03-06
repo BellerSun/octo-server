@@ -66,7 +66,11 @@ func (u *Setting) userSettingUpdate(c *wkhttp.Context) {
 			model.Remark = value.(string)
 		}
 	}
-	version := u.ctx.GenSeq(common.UserSettingSeqKey)
+	version, err := u.ctx.GenSeq(common.UserSettingSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 	model.Version = version
 	if insert {
 		err = u.db.InsertUserSettingModel(model)

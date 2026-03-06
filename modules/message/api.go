@@ -863,7 +863,11 @@ func (m *Message) addOrCancelReaction(c *wkhttp.Context) {
 	if req.ChannelType == common.ChannelTypePerson.Uint8() { // 如果是群则需要计算群成员是否变化 如果有变化则将群成员加入到克隆表
 		fakeChannelID = common.GetFakeChannelIDWith(req.ChannelID, loginUID)
 	}
-	seq := m.genMessageReactionSeq(fakeChannelID) // 下次回复seq
+	seq, err := m.genMessageReactionSeq(fakeChannelID) // 下次回复seq
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 	if model == nil {
 		//新增回应
 		err = m.messageReactionDB.insertReaction(&reactionModel{
@@ -1195,7 +1199,7 @@ func (m *Message) genMessageExtraSeq(channelID string) int64 {
 	return time.Now().UnixNano() / 1e3
 	// return m.ctx.GenSeq(fmt.Sprintf("%s:%s", common.MessageExtraSeqKey, channelID))
 }
-func (m *Message) genMessageReactionSeq(channelID string) int64 {
+func (m *Message) genMessageReactionSeq(channelID string) (int64, error) {
 	return m.ctx.GenSeq(fmt.Sprintf("%s:%s", common.MessageReactionSeqKey, channelID))
 }
 
@@ -1284,7 +1288,11 @@ func (m *Message) offset(c *wkhttp.Context) {
 			return
 		}
 		for _, id := range reminderIds {
-			version := m.ctx.GenSeq(common.RemindersKey)
+			version, err := m.ctx.GenSeq(common.RemindersKey)
+			if err != nil {
+				c.ResponseError(err)
+				return
+			}
 			err = m.remindersDB.updateVersionTx(version, id, tx)
 			if err != nil {
 				tx.Rollback()
@@ -1375,8 +1383,12 @@ func (m *Message) cancelMentionReminderIfNeed(message *messageModel) {
 			if m.hasMention(payloadMap) {
 				all, uids := m.getMention(payloadMap)
 				if all {
-					version := m.ctx.GenSeq(common.RemindersKey)
-					err := m.remindersDB.deleteWithChannel(message.ChannelID, message.ChannelType, message.MessageID, version)
+					version, err := m.ctx.GenSeq(common.RemindersKey)
+					if err != nil {
+						m.Warn("GenSeq failed", zap.Error(err))
+						return
+					}
+					err = m.remindersDB.deleteWithChannel(message.ChannelID, message.ChannelType, message.MessageID, version)
 					if err != nil {
 						m.Error("删除提醒项失败！", zap.Error(err))
 					} else {
@@ -1403,8 +1415,12 @@ func (m *Message) cancelMentionReminderIfNeed(message *messageModel) {
 						}
 					}()
 					for _, uid := range uids {
-						version := m.ctx.GenSeq(common.RemindersKey)
-						err := m.remindersDB.deleteWithChannelAndUIDTx(message.ChannelID, message.ChannelType, uid, message.MessageID, version, tx)
+						version, err := m.ctx.GenSeq(common.RemindersKey)
+						if err != nil {
+							m.Warn("GenSeq failed", zap.Error(err))
+							return
+						}
+						err = m.remindersDB.deleteWithChannelAndUIDTx(message.ChannelID, message.ChannelType, uid, message.MessageID, version, tx)
 						if err != nil {
 							m.Error("删除用户提醒项失败！", zap.Error(err))
 							tx.Rollback()

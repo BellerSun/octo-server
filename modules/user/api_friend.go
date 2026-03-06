@@ -184,7 +184,11 @@ func (f *Friend) delete(c *wkhttp.Context) {
 			fmt.Fprintf(os.Stderr, "recovered panic in goroutine: %v\n%s\n", err, debug.Stack())
 		}
 	}()
-	version := f.ctx.GenSeq(common.FriendSeqKey)
+	version, err := f.ctx.GenSeq(common.FriendSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 	// err = f.db.updateRelationshipTx(loginUID, uid, 1, 1, "", version, tx) // 不能删除sourceVercode 如果删除了 已有会话发起加好友会提示验证码不为空
 	err = f.db.updateRelationship2Tx(loginUID, uid, 1, 1, version, tx)
 	if err != nil {
@@ -581,7 +585,11 @@ func (f *Friend) friendSure(c *wkhttp.Context) {
 			fmt.Fprintf(os.Stderr, "recovered panic in goroutine: %v\n%s\n", err, debug.Stack())
 		}
 	}()
-	version := f.ctx.GenSeq(common.FriendSeqKey)
+	version, err := f.ctx.GenSeq(common.FriendSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 	if applyFriendModel == nil {
 		// 验证code
 		err = source.CheckSource(vercode)

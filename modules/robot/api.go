@@ -409,7 +409,11 @@ func (rb *Robot) inlineQuery(c *wkhttp.Context) {
 }
 
 func (rb *Robot) addInlineQuery(robotID string, inlineQuery *InlineQuery) {
-	seq := rb.ctx.GenSeq(fmt.Sprintf("%s%s", common.RobotEventSeqKey, robotID))
+	seq, err := rb.ctx.GenSeq(fmt.Sprintf("%s%s", common.RobotEventSeqKey, robotID))
+	if err != nil {
+		rb.Error("GenSeq failed", zap.Error(err))
+		return
+	}
 	rb.inlineQueryEventsMapLock.Lock()
 	events := rb.inlineQueryEventsMap[robotID]
 	if events == nil {
@@ -603,11 +607,17 @@ func (rb *Robot) insertSystemRobot() {
 				fmt.Fprintf(os.Stderr, "recovered panic in goroutine: %v\n%s\n", err, debug.Stack())
 			}
 		}()
+		robotVersion, err := rb.ctx.GenSeq(common.RobotSeqKey)
+		if err != nil {
+			tx.Rollback()
+			rb.Error("GenSeq failed", zap.Error(err))
+			return
+		}
 		err = rb.db.insertTx(&robot{
 			RobotID: robotID,
 			Status:  int(Enable),
 			Token:   util.GenerUUID(),
-			Version: rb.ctx.GenSeq(common.RobotSeqKey),
+			Version: robotVersion,
 		}, tx)
 		if err != nil {
 			tx.Rollback()

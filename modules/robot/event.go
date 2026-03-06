@@ -140,7 +140,11 @@ func (rb *Robot) autoReadForBot(message *config.MessageResp, robotID string) {
 
 func (rb *Robot) saveRobotMessage(message *config.MessageResp, robotID string) {
 
-	seq := rb.ctx.GenSeq(fmt.Sprintf("%s%s", common.RobotEventSeqKey, robotID))
+	seq, err := rb.ctx.GenSeq(fmt.Sprintf("%s%s", common.RobotEventSeqKey, robotID))
+	if err != nil {
+		rb.Warn("GenSeq failed", zap.Error(err))
+		return
+	}
 	messageUpdateJson := util.ToJson(&robotEvent{
 		EventID: seq,
 		Message: message,

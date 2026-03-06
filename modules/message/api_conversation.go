@@ -170,9 +170,13 @@ func (co *Conversation) conversationExtraUpdate(c *wkhttp.Context) {
 
 	channelTypeI64, _ := strconv.ParseInt(channelTypeStr, 10, 64)
 
-	version := co.ctx.GenSeq(common.SyncConversationExtraKey)
+	version, err := co.ctx.GenSeq(common.SyncConversationExtraKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 
-	err := co.conversationExtraDB.insertOrUpdate(&conversationExtraModel{
+	err = co.conversationExtraDB.insertOrUpdate(&conversationExtraModel{
 		UID:            loginUID,
 		ChannelID:      channelID,
 		ChannelType:    uint8(channelTypeI64),

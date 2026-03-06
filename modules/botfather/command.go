@@ -671,7 +671,11 @@ func (h *commandHandler) createBot(creatorUID, name, username, botToken string) 
 		}
 	}()
 
-	version := h.ctx.GenSeq(common.RobotSeqKey)
+	version, err := h.ctx.GenSeq(common.RobotSeqKey)
+	if err != nil {
+		h.Error("GenSeq failed", zap.Error(err))
+		return
+	}
 	err = h.db.insertRobotTx(&robotModel{
 		AppID:      appResp.AppID,
 		RobotID:    robotID,

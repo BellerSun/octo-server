@@ -176,12 +176,18 @@ func (bf *BotFather) initBotFatherUser() {
 			}
 		}()
 
+		robotVersion, err := bf.ctx.GenSeq(common.RobotSeqKey)
+		if err != nil {
+			tx.Rollback()
+			bf.Error("GenSeq failed", zap.Error(err))
+			return
+		}
 		err = bf.db.insertRobotTx(&robotModel{
 			AppID:    appResp.AppID,
 			RobotID:  BotFatherUID,
 			Username: BotFatherUID,
 			Token:    appResp.AppKey,
-			Version:  bf.ctx.GenSeq(common.RobotSeqKey),
+			Version:  robotVersion,
 			Status:   1,
 		}, tx)
 		if err != nil {

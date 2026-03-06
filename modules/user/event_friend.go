@@ -149,7 +149,11 @@ func (f *Friend) handleUserRegister(data []byte, commit config.EventCommit) {
 			fmt.Fprintf(os.Stderr, "recovered panic in goroutine: %v\n%s\n", err, debug.Stack())
 		}
 	}()
-	version := f.ctx.GenSeq(common.FriendSeqKey)
+	version, err := f.ctx.GenSeq(common.FriendSeqKey)
+	if err != nil {
+		f.Warn("GenSeq failed", zap.Error(err))
+		return
+	}
 	if applyFriendModel == nil {
 		// 验证code
 		err = source.CheckSource(inviteVercode)

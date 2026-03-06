@@ -49,7 +49,11 @@ func (m *Message) reminderDone(c *wkhttp.Context) {
 		return
 	}
 	for _, id := range ids {
-		version := m.ctx.GenSeq(common.RemindersKey)
+		version, err := m.ctx.GenSeq(common.RemindersKey)
+		if err != nil {
+			c.ResponseError(err)
+			return
+		}
 		err = m.remindersDB.updateVersionTx(version, id, tx)
 		if err != nil {
 			tx.Rollback()
@@ -153,7 +157,11 @@ func (m *Message) getReminders(messages []*config.MessageResp) []*remindersModel
 		if m.hasMention(payloadMap) {
 			all, uids := m.getMention(payloadMap)
 			if all {
-				version := m.ctx.GenSeq(common.RemindersKey)
+				version, err := m.ctx.GenSeq(common.RemindersKey)
+				if err != nil {
+					m.Warn("GenSeq failed", zap.Error(err))
+					continue
+				}
 				reminders = append(reminders, &remindersModel{
 					ChannelID:    message.ChannelID,
 					ChannelType:  message.ChannelType,
@@ -168,7 +176,11 @@ func (m *Message) getReminders(messages []*config.MessageResp) []*remindersModel
 				})
 			} else if len(uids) > 0 {
 				for _, uid := range uids {
-					version := m.ctx.GenSeq(common.RemindersKey)
+					version, err := m.ctx.GenSeq(common.RemindersKey)
+					if err != nil {
+						m.Warn("GenSeq failed", zap.Error(err))
+						continue
+					}
 					reminders = append(reminders, &remindersModel{
 						ChannelID:    message.ChannelID,
 						ChannelType:  message.ChannelType,
@@ -190,7 +202,11 @@ func (m *Message) getReminders(messages []*config.MessageResp) []*remindersModel
 			if payloadMap["visibles"] != nil {
 				visibleObjs := payloadMap["visibles"].([]interface{})
 				for _, visibleObj := range visibleObjs {
-					version := m.ctx.GenSeq(common.RemindersKey)
+					version, err := m.ctx.GenSeq(common.RemindersKey)
+					if err != nil {
+						m.Warn("GenSeq failed", zap.Error(err))
+						continue
+					}
 					reminders = append(reminders, &remindersModel{
 						ChannelID:    message.ChannelID,
 						ChannelType:  message.ChannelType,

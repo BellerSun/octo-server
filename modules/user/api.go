@@ -1760,8 +1760,16 @@ func (u *User) addBlacklist(c *wkhttp.Context) {
 		return
 	}
 	//添加黑名单
-	version := u.ctx.GenSeq(common.UserSettingSeqKey)
-	friendVersion := u.ctx.GenSeq(common.FriendSeqKey)
+	version, err := u.ctx.GenSeq(common.UserSettingSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
+	friendVersion, err := u.ctx.GenSeq(common.FriendSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 	tx, err := u.ctx.DB().Begin()
 	if err != nil {
 		u.Error("开启事务失败！", zap.Error(err))
@@ -1831,8 +1839,16 @@ func (u *User) removeBlacklist(c *wkhttp.Context) {
 		return
 	}
 
-	version := u.ctx.GenSeq(common.UserSettingSeqKey)
-	friendVersion := u.ctx.GenSeq(common.FriendSeqKey)
+	version, err := u.ctx.GenSeq(common.UserSettingSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
+	friendVersion, err := u.ctx.GenSeq(common.FriendSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 
 	tx, err := u.ctx.DB().Begin()
 	if err != nil {
@@ -2338,7 +2354,11 @@ func (u *User) addFileHelperFriend(uid string) error {
 		return err
 	}
 	if !isFriend {
-		version := u.ctx.GenSeq(common.FriendSeqKey)
+		version, err := u.ctx.GenSeq(common.FriendSeqKey)
+		if err != nil {
+			u.Error("GenSeq failed", zap.Error(err))
+			return err
+		}
 		err := u.friendDB.Insert(&FriendModel{
 			UID:     uid,
 			ToUID:   u.ctx.GetConfig().Account.FileHelperUID,
@@ -2364,7 +2384,11 @@ func (u *User) addBotFatherFriend(uid string) error {
 		return err
 	}
 	if !isFriend {
-		version := u.ctx.GenSeq(common.FriendSeqKey)
+		version, err := u.ctx.GenSeq(common.FriendSeqKey)
+		if err != nil {
+			u.Error("GenSeq failed", zap.Error(err))
+			return err
+		}
 		err := u.friendDB.Insert(&FriendModel{
 			UID:     uid,
 			ToUID:   botFatherUID,
@@ -2402,7 +2426,11 @@ func (u *User) addSystemFriend(uid string) error {
 		}
 	}()
 	if !isFriend {
-		version := u.ctx.GenSeq(common.FriendSeqKey)
+		version, err := u.ctx.GenSeq(common.FriendSeqKey)
+		if err != nil {
+			u.Error("GenSeq failed", zap.Error(err))
+			return err
+		}
 		err := u.friendDB.InsertTx(&FriendModel{
 			UID:     uid,
 			ToUID:   u.ctx.GetConfig().Account.SystemUID,

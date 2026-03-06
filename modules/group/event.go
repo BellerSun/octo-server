@@ -106,7 +106,11 @@ func (g *Group) handleRegisterUserEvent(data []byte, commit config.EventCommit) 
 	}()
 	if groupModel == nil {
 		//创建群
-		version := g.ctx.GenSeq(common.GroupSeqKey)
+		version, err := g.ctx.GenSeq(common.GroupSeqKey)
+		if err != nil {
+			g.Warn("GenSeq failed", zap.Error(err))
+			return
+		}
 		err = g.db.InsertTx(&Model{
 			GroupNo: g.ctx.GetConfig().Account.SystemGroupID,
 			Name:    g.ctx.GetConfig().Account.SystemGroupName,
@@ -121,7 +125,11 @@ func (g *Group) handleRegisterUserEvent(data []byte, commit config.EventCommit) 
 			return
 		}
 		//添加创建者
-		memberVersion := g.ctx.GenSeq(common.GroupMemberSeqKey)
+		memberVersion, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+		if err != nil {
+			g.Warn("GenSeq failed", zap.Error(err))
+			return
+		}
 		err = g.db.InsertMemberTx(&MemberModel{
 			GroupNo: g.ctx.GetConfig().Account.SystemGroupID,
 			UID:     g.ctx.GetConfig().Account.SystemUID,
@@ -220,7 +228,11 @@ func (g *Group) handleOrgOrDeptCreateEvent(data []byte, commit config.EventCommi
 	}()
 	if groupModel == nil {
 		// 创建群
-		version := g.ctx.GenSeq(common.GroupSeqKey)
+		version, err := g.ctx.GenSeq(common.GroupSeqKey)
+		if err != nil {
+			g.Warn("GenSeq failed", zap.Error(err))
+			return
+		}
 		err = g.db.InsertTx(&Model{
 			GroupNo:             req.GroupNo,
 			Name:                req.Name,
@@ -239,7 +251,11 @@ func (g *Group) handleOrgOrDeptCreateEvent(data []byte, commit config.EventCommi
 		}
 
 		//添加创建者
-		memberVersion := g.ctx.GenSeq(common.GroupMemberSeqKey)
+		memberVersion, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+		if err != nil {
+			g.Warn("GenSeq failed", zap.Error(err))
+			return
+		}
 		err = g.db.InsertMemberTx(&MemberModel{
 			GroupNo: req.GroupNo,
 			UID:     req.Operator,
@@ -258,7 +274,11 @@ func (g *Group) handleOrgOrDeptCreateEvent(data []byte, commit config.EventCommi
 		if len(req.Members) > 0 {
 			for _, member := range req.Members {
 				realMemberUids = append(realMemberUids, member.EmployeeUid)
-				memberVersion := g.ctx.GenSeq(common.GroupMemberSeqKey)
+				memberVersion, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+				if err != nil {
+					g.Warn("GenSeq failed", zap.Error(err))
+					return
+				}
 				err = g.db.InsertMemberTx(&MemberModel{
 					GroupNo: req.GroupNo,
 					UID:     member.EmployeeUid,
@@ -408,7 +428,11 @@ func (g *Group) handleOrgOrDeptEmployeeUpdate(data []byte, commit config.EventCo
 	// 添加或修改群成员
 	for groupNo, members := range list {
 		for _, member := range members {
-			version := g.ctx.GenSeq(common.GroupMemberSeqKey)
+			version, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+			if err != nil {
+				g.Warn("GenSeq failed", zap.Error(err))
+				return
+			}
 			existDelete, err := g.db.ExistMemberDelete(member.EmployeeUid, groupNo)
 			if err != nil {
 				g.Error("查询是否存在删除成员失败！", zap.Error(err))
@@ -684,7 +708,11 @@ func (g *Group) handleOrgEmployeeExit(data []byte, commit config.EventCommit) {
 		}
 	}()
 	for _, groupNo := range realGroups {
-		version := g.ctx.GenSeq(common.GroupMemberSeqKey)
+		version, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+		if err != nil {
+			g.Warn("GenSeq failed", zap.Error(err))
+			return
+		}
 		err = g.db.DeleteMemberTx(groupNo, req.Operator, version, tx)
 		if err != nil {
 			g.Error("删除群成员失败！", zap.Error(err))

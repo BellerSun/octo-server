@@ -124,7 +124,12 @@ func (m *Manager) delete(c *wkhttp.Context) {
 		c.ResponseError(errors.New("删除机器人菜单失败"))
 		return
 	}
-	robot.Version = m.ctx.GenSeq(common.RobotSeqKey)
+	genSeqVal, err := m.ctx.GenSeq(common.RobotSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
+	robot.Version = genSeqVal
 	err = m.db.updateRobotTx(robot, tx)
 	if err != nil {
 		tx.Rollback()

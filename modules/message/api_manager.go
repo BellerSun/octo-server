@@ -161,7 +161,11 @@ func (m *Manager) delete(c *wkhttp.Context) {
 	}()
 	msgIds := make([]string, 0)
 	for _, msg := range req.List {
-		version := m.genMessageExtraSeq(fakeChannelID)
+		version, err := m.genMessageExtraSeq(fakeChannelID)
+		if err != nil {
+			c.ResponseError(err)
+			return
+		}
 		msgIds = append(msgIds, msg.MessageID)
 		err := m.managerDB.updateMsgExtraVersionAndDeletedTx(&messageExtraModel{
 			ChannelID:   fakeChannelID,
@@ -299,7 +303,12 @@ func (m *Manager) deleteProhibitWords(c *wkhttp.Context) {
 		return
 	}
 	words.IsDeleted = isDeleted
-	words.Version = m.ctx.GenSeq(common.ProhibitWordKey)
+	genSeqVal, err := m.ctx.GenSeq(common.ProhibitWordKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
+	words.Version = genSeqVal
 	err = m.managerDB.updateProhibitWord(words)
 	if err != nil {
 		m.Error(common.ErrData.Error(), zap.Error(err))
@@ -383,7 +392,11 @@ func (m *Manager) addProhibitWords(c *wkhttp.Context) {
 		c.ResponseError(errors.New("查询违禁词错误"))
 		return
 	}
-	version := m.ctx.GenSeq(common.ProhibitWordKey)
+	version, err := m.ctx.GenSeq(common.ProhibitWordKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 	if model != nil {
 		model.IsDeleted = 0
 		model.Version = version
@@ -882,7 +895,7 @@ func (m *managerSendMsgReq) check() error {
 	return nil
 }
 
-func (m *Manager) genMessageExtraSeq(channelID string) int64 {
+func (m *Manager) genMessageExtraSeq(channelID string) (int64, error) {
 	return m.ctx.GenSeq(fmt.Sprintf("%s:%s", common.MessageExtraSeqKey, channelID))
 }
 

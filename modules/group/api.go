@@ -581,7 +581,11 @@ func (g *Group) groupCreate(c *wkhttp.Context) {
 
 	groupNo := util.GenerUUID()
 
-	version := g.ctx.GenSeq(common.GroupSeqKey)
+	version, err := g.ctx.GenSeq(common.GroupSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 	channelServiceObj := register.GetService(ChannelServiceName)
 	var channelService chservice.IService
 	if channelServiceObj != nil {
@@ -635,7 +639,11 @@ func (g *Group) groupCreate(c *wkhttp.Context) {
 			})
 			continue
 		}
-		memberVersion := g.ctx.GenSeq(common.GroupMemberSeqKey)
+		memberVersion, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+		if err != nil {
+			c.ResponseError(err)
+			return
+		}
 		realMemberUids = append(realMemberUids, memberUser.UID)
 		var role = MemberRoleCommon
 		if memberUser.UID == creator {
@@ -792,7 +800,11 @@ func (g *Group) groupUpdate(c *wkhttp.Context) {
 		return
 	}
 
-	version := g.ctx.GenSeq(common.GroupSeqKey)
+	version, err := g.ctx.GenSeq(common.GroupSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 	group.Version = version
 
 	// TODO: 这里的写法只支持更新一个属性，如果是多个属性后面需要修改。
@@ -1059,7 +1071,11 @@ func (g *Group) addMembersTx(members []string, groupNo string, operator, operato
 	**/
 	userBaseVos := make([]*config.UserBaseVo, 0, len(realMembers))
 	for _, realMember := range realMemberModels {
-		version := g.ctx.GenSeq(common.GroupMemberSeqKey)
+		version, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+		if err != nil {
+			g.Error("GenSeq failed", zap.Error(err))
+			return err
+		}
 
 		userBaseVos = append(userBaseVos, &config.UserBaseVo{
 			UID:  realMember.UID,
@@ -1234,7 +1250,11 @@ func (g *Group) addMembers(members []string, groupNo string, operator, operatorN
 func (g *Group) notifyBotJoinedGroup(botMembers []*user.Model, groupNo, operator, operatorName string) {
 	for _, botMember := range botMembers {
 		robotID := botMember.UID
-		seq := g.ctx.GenSeq(fmt.Sprintf("%s%s", common.RobotEventSeqKey, robotID))
+		seq, err := g.ctx.GenSeq(fmt.Sprintf("%s%s", common.RobotEventSeqKey, robotID))
+		if err != nil {
+			g.Warn("GenSeq failed for bot", zap.String("robotID", robotID), zap.Error(err))
+			continue
+		}
 		eventData := map[string]interface{}{
 			"event_id":   seq,
 			"event_type": "bot_joined_group",
@@ -1292,7 +1312,11 @@ func (g *Group) managerAdd(c *wkhttp.Context) {
 		return
 	}
 
-	version := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	version, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 
 	err = g.db.UpdateMembersToManager(groupNo, memberUIDs, version)
 	if err != nil {
@@ -1382,7 +1406,11 @@ func (g *Group) managerRemove(c *wkhttp.Context) {
 		return
 	}
 
-	version := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	version, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 
 	err = g.db.UpdateManagersToMember(groupNo, memberUIDs, version)
 	if err != nil {
@@ -1687,7 +1715,11 @@ func (g *Group) groupScanJoin(c *wkhttp.Context) {
 		return
 	}
 
-	version := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	version, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 
 	memberModel := &MemberModel{
 		GroupNo:   groupNo,
@@ -1875,7 +1907,11 @@ func (g *Group) transferGrouper(c *wkhttp.Context) {
 		return
 	}
 
-	version := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	version, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 	/**
 	修改群主为普通成员，修改转让用户为群主
 	**/
@@ -2010,7 +2046,12 @@ func (g *Group) memberUpdate(c *wkhttp.Context) {
 			memberModel.Remark = value.(string)
 		}
 	}
-	memberModel.Version = g.ctx.GenSeq(common.GroupMemberSeqKey)
+	genSeqVal, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
+	memberModel.Version = genSeqVal
 	err = g.db.UpdateMember(memberModel)
 	if err != nil {
 		g.Error("更新群成员信息失败！", zap.Error(err))
@@ -2167,7 +2208,12 @@ func (g *Group) memberRemove(c *wkhttp.Context) {
 
 	for _, realMember := range realDeleteMemberModels {
 
-		version := g.ctx.GenSeq(common.GroupMemberSeqKey)
+		version, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+		if err != nil {
+			tx.RollbackUnlessCommitted()
+			c.ResponseError(err)
+			return
+		}
 		err = g.db.DeleteMemberTx(groupNo, realMember.UID, version, tx)
 		if err != nil {
 			tx.RollbackUnlessCommitted()
@@ -2289,7 +2335,11 @@ func (g *Group) groupSettingUpdate(c *wkhttp.Context) {
 			return nil, false, err
 		}
 		insert := false // 是否是插入操作
-		version := g.ctx.GenSeq(common.GroupSettingSeqKey)
+		version, err := g.ctx.GenSeq(common.GroupSettingSeqKey)
+		if err != nil {
+			c.ResponseError(err)
+			return
+		}
 		if setting == nil { // 不存在设置信息
 			insert = true
 			setting = newDefaultSetting()
@@ -2434,7 +2484,11 @@ func (g *Group) groupExit(c *wkhttp.Context) {
 	/**
 	如果退出的人是普通成员，则直接删除就行
 	**/
-	version := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	version, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 
 	tx, err := g.db.session.Begin()
 	if err != nil {
@@ -2586,7 +2640,11 @@ func (g *Group) blacklist(c *wkhttp.Context) {
 		status = int(common.GroupMemberStatusNormal)
 	}
 
-	version := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	version, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
 	err = g.db.updateMembersStatus(version, groupNo, status, req.Uids)
 	if err != nil {
 		g.Error("添加或移除群成员黑名单错误", zap.Error(err))
@@ -2755,7 +2813,12 @@ func (g *Group) forbiddenWithGroupMember(c *wkhttp.Context) {
 		c.ResponseError(errors.New("操作用户权限不够"))
 		return
 	}
-	member.Version = g.ctx.GenSeq(common.GroupMemberSeqKey)
+	genSeqVal, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+	if err != nil {
+		c.ResponseError(err)
+		return
+	}
+	member.Version = genSeqVal
 	if req.Action == 0 {
 		// 解禁
 		member.ForbiddenExpirTime = 0
@@ -2837,7 +2900,12 @@ func (g *Group) CheckForbiddenLoop() {
 			continue
 		}
 		for _, model := range models {
-			model.Version = g.ctx.GenSeq(common.GroupMemberSeqKey)
+			genSeqVal, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
+			if err != nil {
+				g.Error("GenSeq failed", zap.Error(err))
+				continue
+			}
+			model.Version = genSeqVal
 			model.ForbiddenExpirTime = 0
 			err = g.db.UpdateMember(model)
 			if err != nil {
