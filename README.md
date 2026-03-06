@@ -104,6 +104,22 @@ dmworkim/
 └── docker/           # 部署
 ```
 
+## 🔐 Webhook 安全配置
+
+### `TS_WEBHOOK_SECRET_KEY`
+
+用于验证入站 Webhook 请求的 HMAC-SHA256 签名，防止伪造请求。
+
+```bash
+# 在 .env 文件或环境变量中设置
+export TS_WEBHOOK_SECRET_KEY="your-secret-key"
+```
+
+- **GitHub Webhook**: 在 GitHub 仓库 Settings → Webhooks → Secret 中填入相同的密钥
+- 服务端使用 `X-Hub-Signature-256` 头进行签名验证
+- 未配置此变量时，Webhook 请求将被拒绝（返回 HTTP 401）
+- 签名验证使用 `hmac.Equal()` 常量时间比较，防止时序攻击
+
 ## 🔗 相关项目
 
 | 项目 | 说明 |
