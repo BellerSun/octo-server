@@ -40,6 +40,7 @@ func (b *Buffer) append(s string) *Buffer {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Println("*****内存不够了！******")
+			panic(err)
 		}
 	}()
 
