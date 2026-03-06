@@ -95,7 +95,12 @@ func (cn *Common) Route(r *wkhttp.WKHttp) {
 
 	appConfigM, err := cn.insertAppConfigIfNeed()
 	if err != nil {
+		cn.Error("初始化应用配置失败", zap.Error(err))
 		panic(err)
+	}
+	if appConfigM == nil {
+		cn.Error("初始化应用配置返回空结果")
+		panic(errors.New("初始化应用配置返回空结果"))
 	}
 	// 设置系统私钥
 	cn.ctx.GetConfig().AppRSAPrivateKey = appConfigM.RSAPrivateKey
@@ -144,7 +149,9 @@ func (cn *Common) getKeepAliveVideo(c *wkhttp.Context) {
 		c.Writer.WriteHeader(http.StatusNotFound)
 		return
 	}
-	c.Writer.Write(videoBytes)
+	if _, err = c.Writer.Write(videoBytes); err != nil {
+		cn.Error("写入视频数据失败", zap.Error(err))
+	}
 }
 
 // 获取pc最新版本
@@ -330,7 +337,15 @@ func (cn *Common) appConfig(c *wkhttp.Context) {
 		c.ResponseError(errors.New("查询应用配置失败！"))
 		return
 	}
-	versionI64, _ := strconv.ParseInt(versionStr, 10, 64)
+	if appConfigM == nil {
+		cn.Error("应用配置为空")
+		c.ResponseError(errors.New("应用配置为空"))
+		return
+	}
+	versionI64, err := strconv.ParseInt(versionStr, 10, 64)
+	if err != nil && versionStr != "" {
+		cn.Warn("解析版本号失败", zap.String("version", versionStr), zap.Error(err))
+	}
 	if versionI64 != 0 && int(versionI64) >= appConfigM.Version {
 		c.JSON(http.StatusOK, &appConfigResp{
 			Version: appConfigM.Version,
