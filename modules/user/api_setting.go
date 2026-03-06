@@ -47,23 +47,41 @@ func (u *Setting) userSettingUpdate(c *wkhttp.Context) {
 	for key, value := range settingMap {
 		switch key {
 		case "mute":
-			model.Mute = int(value.(float64))
+			if f, ok := value.(float64); ok {
+			model.Mute = int(f)
+		}
 		case "top":
-			model.Top = int(value.(float64))
+			if f, ok := value.(float64); ok {
+			model.Top = int(f)
+		}
 		case "chat_pwd_on":
-			model.ChatPwdOn = int(value.(float64))
+			if f, ok := value.(float64); ok {
+			model.ChatPwdOn = int(f)
+		}
 		case "screenshot":
-			model.Screenshot = int(value.(float64))
+			if f, ok := value.(float64); ok {
+			model.Screenshot = int(f)
+		}
 		case "revoke_remind":
-			model.RevokeRemind = int(value.(float64))
+			if f, ok := value.(float64); ok {
+			model.RevokeRemind = int(f)
+		}
 		case "receipt":
-			model.Receipt = int(value.(float64))
+			if f, ok := value.(float64); ok {
+			model.Receipt = int(f)
+		}
 		case "flame":
-			model.Flame = int(value.(float64))
+			if f, ok := value.(float64); ok {
+			model.Flame = int(f)
+		}
 		case "flame_second":
-			model.FlameSecond = int(value.(float64))
+			if f, ok := value.(float64); ok {
+			model.FlameSecond = int(f)
+		}
 		case "remark":
-			model.Remark = value.(string)
+			if s, ok := value.(string); ok {
+			model.Remark = s
+		}
 		}
 	}
 	version, err := u.ctx.GenSeq(common.UserSettingSeqKey)

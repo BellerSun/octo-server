@@ -110,7 +110,10 @@ func (c *Context) ResponseWithStatus(status int, data interface{}) {
 
 // GetLoginUID 获取当前登录的用户uid
 func (c *Context) GetLoginUID() string {
-	return c.MustGet("uid").(string)
+	if uid, ok := c.MustGet("uid").(string); ok {
+		return uid
+	}
+	return ""
 }
 
 // GetAppID appID
@@ -120,7 +123,10 @@ func (c *Context) GetAppID() string {
 
 // GetLoginName 获取当前登录的用户名字
 func (c *Context) GetLoginName() string {
-	return c.MustGet("name").(string)
+	if name, ok := c.MustGet("name").(string); ok {
+		return name
+	}
+	return ""
 }
 
 // GetLoginRole 获取当前登录用户的角色
@@ -130,7 +136,10 @@ func (c *Context) GetLoginRole() string {
 
 // GetSpanContext 获取当前请求的span context
 func (c *Context) GetSpanContext() opentracing.SpanContext {
-	return c.MustGet("spanContext").(opentracing.SpanContext)
+	if sc, ok := c.MustGet("spanContext").(opentracing.SpanContext); ok {
+		return sc
+	}
+	return nil
 }
 
 // CheckLoginRole 检查登录角色权限

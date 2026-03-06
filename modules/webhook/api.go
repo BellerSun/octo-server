@@ -422,7 +422,7 @@ func (w *Webhook) pushTo(msgResp msgOfflineNotify, toUids []string) error {
 			return errors.New("type为空！")
 		}
 		if contentMap["cmd"] != nil {
-			cmd := contentMap["cmd"].(string)
+			cmd, _ := contentMap["cmd"].(string)
 			if cmd == "room.invoke" || cmd == "rtc.p2p.invoke" {
 				isVideoCall = true
 			}

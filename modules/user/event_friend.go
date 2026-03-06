@@ -22,8 +22,8 @@ func (f *Friend) handleFriendSure(data []byte, commit config.EventCommit) {
 		commit(err)
 		return
 	}
-	uid := req["uid"].(string)
-	toUID := req["to_uid"].(string)
+	uid, _ := req["uid"].(string)
+	toUID, _ := req["to_uid"].(string)
 	if uid == "" || toUID == "" {
 		commit(errors.New("好友ID不能为空"))
 		return
@@ -66,8 +66,8 @@ func (f *Friend) handleDeleteFriend(data []byte, commit config.EventCommit) {
 		commit(err)
 		return
 	}
-	uid := req["uid"].(string)
-	toUID := req["to_uid"].(string)
+	uid, _ := req["uid"].(string)
+	toUID, _ := req["to_uid"].(string)
 	if uid == "" || toUID == "" {
 		commit(errors.New("好友ID不能为空"))
 		return

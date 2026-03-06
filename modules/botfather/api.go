@@ -281,7 +281,11 @@ func getRobotFromContext(c *wkhttp.Context) *robotModel {
 	if !exists {
 		return nil
 	}
-	return v.(*robotModel)
+	rm, ok := v.(*robotModel)
+	if !ok {
+		return nil
+	}
+	return rm
 }
 
 func getRobotIDFromContext(c *wkhttp.Context) string {
@@ -289,7 +293,10 @@ func getRobotIDFromContext(c *wkhttp.Context) string {
 	if v == nil {
 		return ""
 	}
-	return v.(string)
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
 }
 
 // ========== Bot Register API ==========

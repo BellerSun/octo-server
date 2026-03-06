@@ -13,6 +13,21 @@ import (
 	"go.uber.org/zap"
 )
 
+// safeIntFromFloat64 safely converts an interface{} to int via float64.
+func safeIntFromFloat64(v interface{}) (int, bool) {
+	f, ok := v.(float64)
+	if !ok {
+		return 0, false
+	}
+	return int(f), true
+}
+
+// safeString safely converts an interface{} to string.
+func safeString(v interface{}) (string, bool) {
+	s, ok := v.(string)
+	return s, ok
+}
+
 type settingContext struct {
 	loginUID     string
 	loginName    string
@@ -136,51 +151,99 @@ type groupSettingActionFnc func(ctx *settingContext, value interface{}) error
 // 设置action
 var settingActionMap = map[string]groupSettingActionFnc{
 	"mute": func(ctx *settingContext, value interface{}) error { // 免打扰
-		ctx.groupSetting.Mute = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupSetting.Mute = val
 		return ctx.updateSettingAndSendCMD()
 	},
 	"top": func(ctx *settingContext, value interface{}) error { // 会话置顶
-		ctx.groupSetting.Top = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupSetting.Top = val
 		return ctx.updateSettingAndSendCMD()
 	},
 	"save": func(ctx *settingContext, value interface{}) error { // 保存群
-		ctx.groupSetting.Save = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupSetting.Save = val
 		return ctx.updateSettingAndSendCMD()
 	},
 	"show_nick": func(ctx *settingContext, value interface{}) error { // 是否显示昵称
-		ctx.groupSetting.ShowNick = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupSetting.ShowNick = val
 		return ctx.updateSettingAndSendCMD()
 	},
 	"chat_pwd_on": func(ctx *settingContext, value interface{}) error { // 聊天密码
-		ctx.groupSetting.ChatPwdOn = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupSetting.ChatPwdOn = val
 		return ctx.updateSettingAndSendCMD()
 	},
 	"screenshot": func(ctx *settingContext, value interface{}) error { // 截屏
-		ctx.groupSetting.Screenshot = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupSetting.Screenshot = val
 		return ctx.updateSettingAndSendCMD()
 	},
 	"join_group_remind": func(ctx *settingContext, value interface{}) error { // 进群提醒
-		ctx.groupSetting.JoinGroupRemind = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupSetting.JoinGroupRemind = val
 		return ctx.updateSettingAndSendCMD()
 	},
 	"revoke_remind": func(ctx *settingContext, value interface{}) error { // 撤回提醒
-		ctx.groupSetting.RevokeRemind = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupSetting.RevokeRemind = val
 		return ctx.updateSettingAndSendCMD()
 	},
 	"receipt": func(ctx *settingContext, value interface{}) error { // 消息已读回执
-		ctx.groupSetting.Receipt = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupSetting.Receipt = val
 		return ctx.updateSettingAndSendCMD()
 	},
 	"remark": func(ctx *settingContext, value interface{}) error { // 群备注
-		ctx.groupSetting.Remark = value.(string)
+		val, ok := safeString(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupSetting.Remark = val
 		return ctx.updateSettingAndSendCMD()
 	},
 	"flame": func(ctx *settingContext, value interface{}) error { // 阅后即焚开启
-		ctx.groupSetting.Flame = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupSetting.Flame = val
 		return ctx.updateSettingAndSendCMD()
 	},
 	"flame_second": func(ctx *settingContext, value interface{}) error { // 阅后即焚时间
-		ctx.groupSetting.FlameSecond = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupSetting.FlameSecond = val
 		return ctx.updateSettingAndSendCMD()
 	},
 }
@@ -190,7 +253,11 @@ var groupUpdateActionMap = map[string]groupUpdateActionFnc{
 		if err := ctx.checkPermissions(); err != nil {
 			return err
 		}
-		ctx.groupModel.Forbidden = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupModel.Forbidden = val
 
 		err := ctx.updateGroup()
 		if err != nil {
@@ -227,7 +294,11 @@ var groupUpdateActionMap = map[string]groupUpdateActionFnc{
 		if err := ctx.checkPermissions(); err != nil {
 			return err
 		}
-		ctx.groupModel.ForbiddenAddFriend = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupModel.ForbiddenAddFriend = val
 		err := ctx.updateGroup()
 		if err != nil {
 			return err
@@ -242,7 +313,11 @@ var groupUpdateActionMap = map[string]groupUpdateActionFnc{
 		if err := ctx.checkPermissions(); err != nil {
 			return err
 		}
-		ctx.groupModel.Invite = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupModel.Invite = val
 
 		err := ctx.updateGroup()
 		if err != nil {
@@ -255,7 +330,11 @@ var groupUpdateActionMap = map[string]groupUpdateActionFnc{
 		if err := ctx.checkPermissions(); err != nil {
 			return err
 		}
-		ctx.groupModel.AllowViewHistoryMsg = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupModel.AllowViewHistoryMsg = val
 
 		err := ctx.updateGroup()
 		if err != nil {
@@ -269,7 +348,11 @@ var groupUpdateActionMap = map[string]groupUpdateActionFnc{
 		if err := ctx.checkPermissions(); err != nil {
 			return err
 		}
-		ctx.groupModel.AllowMemberPinnedMessage = int(value.(float64))
+		val, ok := safeIntFromFloat64(value)
+		if !ok {
+			return errors.New("invalid value type")
+		}
+		ctx.groupModel.AllowMemberPinnedMessage = val
 		err := ctx.updateGroup()
 		if err != nil {
 			return err

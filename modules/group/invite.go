@@ -175,12 +175,20 @@ func (g *Group) groupMemberInviteSure(c *wkhttp.Context) {
 		c.ResponseError(errors.New("解码认证信息的JSON数据失败！"))
 		return
 	}
-	authType := authMap["type"].(string)
+	authType, ok := authMap["type"].(string)
+	if !ok {
+		c.ResponseError(errors.New("授权码类型无效！"))
+		return
+	}
 	if authType != string(common.AuthCodeTypeGroupMemberInvite) {
 		c.ResponseError(errors.New("授权码不是确认邀请！"))
 		return
 	}
-	inviteNo := authMap["invite_no"].(string)
+	inviteNo, ok := authMap["invite_no"].(string)
+	if !ok {
+		c.ResponseError(errors.New("邀请编号无效！"))
+		return
+	}
 	/**
 	判断邀请信息是否有效
 	**/
@@ -241,7 +249,11 @@ func (g *Group) groupMemberInviteSure(c *wkhttp.Context) {
 		return
 
 	}
-	allower := authMap["allower"].(string)
+	allower, ok := authMap["allower"].(string)
+	if !ok {
+		c.ResponseError(errors.New("授权者信息无效！"))
+		return
+	}
 	tx, err := g.ctx.DB().Begin()
 	if err != nil {
 		g.Error("开启事务失败！", zap.Error(err))

@@ -173,13 +173,16 @@ func (rb *Robot) messagesListen(messages []*config.MessageResp) {
 			if robotID != nil {
 				if robotID == config.New().Account.SystemUID {
 					content, _ := contentMap["content"].(string)
-					entities := contentMap["entities"].([]interface{})
+					entities, _ := contentMap["entities"].([]interface{})
 					var key string
 					if entities != nil {
 						var offset int64
 						var length int64
 						for _, entitiesObj := range entities {
-							entitiesMap := entitiesObj.(map[string]interface{})
+							entitiesMap, ok := entitiesObj.(map[string]interface{})
+							if !ok {
+								continue
+							}
 							if entitiesMap["type"] == "bot_command" {
 								offset, _ = entitiesMap["offset"].(json.Number).Int64()
 								length, _ = entitiesMap["length"].(json.Number).Int64()
