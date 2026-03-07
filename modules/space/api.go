@@ -253,6 +253,11 @@ func (s *Space) mySpaces(c *wkhttp.Context) {
 
 	resps := make([]spaceResp, 0, len(spaces))
 	for _, sp := range spaces {
+		inviteCode := ""
+		invitations, invErr := s.db.queryInvitationsBySpaceID(sp.SpaceId)
+		if invErr == nil && len(invitations) > 0 {
+			inviteCode = invitations[0].InviteCode
+		}
 		resps = append(resps, spaceResp{
 			SpaceId:     sp.SpaceId,
 			Name:        sp.Name,
@@ -262,6 +267,7 @@ func (s *Space) mySpaces(c *wkhttp.Context) {
 			Status:      sp.Status,
 			Role:        sp.Role,
 			MemberCount: sp.MemberCount,
+			InviteCode:  inviteCode,
 			CreatedAt:   sp.CreatedAt.String(),
 			UpdatedAt:   sp.UpdatedAt.String(),
 		})
