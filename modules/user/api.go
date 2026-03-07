@@ -19,6 +19,7 @@ import (
 
 	"github.com/Mininglamp-OSS/octo-server/modules/file"
 	"github.com/Mininglamp-OSS/octo-server/modules/source"
+	spacepkg "github.com/Mininglamp-OSS/octo-server/pkg/space"
 	"github.com/Mininglamp-OSS/octo-lib/config"
 	"github.com/Mininglamp-OSS/octo-lib/model"
 	"github.com/gocraft/dbr/v2"
@@ -1300,6 +1301,7 @@ func (u *User) register(c *wkhttp.Context) {
 // 搜索用户
 func (u *User) search(c *wkhttp.Context) {
 	keyword := c.Query("keyword")
+	spaceID := c.Query("space_id")
 	useModel, err := u.db.QueryByKeyword(keyword)
 	if err != nil {
 		u.Error("查询用户信息失败！", zap.Error(err), zap.String("keyword", keyword))
@@ -1311,6 +1313,21 @@ func (u *User) search(c *wkhttp.Context) {
 			"exist": 0,
 		})
 		return
+	}
+	// Space 模式：搜索结果只返回 Space 成员
+	if spaceID != "" {
+		isMember, err := spacepkg.CheckMembership(u.ctx.DB(), spaceID, useModel.UID)
+		if err != nil {
+			u.Error("校验 Space 成员错误", zap.Error(err))
+			c.ResponseError(errors.New("校验成员关系错误"))
+			return
+		}
+		if !isMember {
+			c.JSON(http.StatusOK, gin.H{
+				"exist": 0,
+			})
+			return
+		}
 	}
 	appconfig, _ := u.commonService.GetAppConfig()
 

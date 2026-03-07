@@ -16,6 +16,7 @@ import (
 	common2 "github.com/Mininglamp-OSS/octo-server/modules/common"
 	"github.com/Mininglamp-OSS/octo-server/modules/file"
 	"github.com/Mininglamp-OSS/octo-server/modules/source"
+	spacepkg "github.com/Mininglamp-OSS/octo-server/pkg/space"
 	"github.com/Mininglamp-OSS/octo-server/modules/user"
 	"github.com/Mininglamp-OSS/octo-lib/common"
 	"github.com/Mininglamp-OSS/octo-lib/config"
@@ -484,7 +485,35 @@ func (g *Group) groupCreate(c *wkhttp.Context) {
 		return
 	}
 	realUids := make([]string, 0)
-	if g.ctx.GetConfig().Group.CreateGroupVerifyFriendOn {
+	// Space 模式：校验所有成员都在 Space 内
+	if req.SpaceID != "" {
+		// 校验创建者
+		creatorOk, err := spacepkg.CheckMembership(g.ctx.DB(), req.SpaceID, creator)
+		if err != nil {
+			g.Error("校验创建者 Space 成员错误", zap.Error(err))
+			c.ResponseError(errors.New("校验成员关系错误"))
+			return
+		}
+		if !creatorOk {
+			c.ResponseError(errors.New("你不是该 Space 的成员"))
+			return
+		}
+		for _, uid := range req.Members {
+			ok, err := spacepkg.CheckMembership(g.ctx.DB(), req.SpaceID, uid)
+			if err != nil {
+				g.Error("校验成员 Space 成员错误", zap.Error(err), zap.String("uid", uid))
+				c.ResponseError(errors.New("校验成员关系错误"))
+				return
+			}
+			if ok {
+				realUids = append(realUids, uid)
+			}
+		}
+		if len(realUids) == 0 {
+			c.ResponseError(errors.New("所选成员都不在该 Space 内"))
+			return
+		}
+	} else if g.ctx.GetConfig().Group.CreateGroupVerifyFriendOn {
 		friends := make([]*model.FriendResp, 0)
 		// 验证好友关系
 		modules := register.GetModules(g.ctx)
