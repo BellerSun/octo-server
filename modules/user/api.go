@@ -2045,7 +2045,13 @@ func (u *User) setChatPwd(c *wkhttp.Context) {
 		return
 	}
 	//修改用户聊天密码
-	err = u.db.UpdateUsersWithField("chat_pwd", req.ChatPwd, loginUID)
+	hashedChatPwd, err := HashPassword(req.ChatPwd)
+	if err != nil {
+		u.Error("哈希聊天密码失败！", zap.Error(err))
+		c.ResponseError(errors.New("修改聊天密码失败"))
+		return
+	}
+	err = u.db.UpdateUsersWithField("chat_pwd", hashedChatPwd, loginUID)
 	if err != nil {
 		u.Error("查询用户信息失败！", zap.Error(err))
 		c.ResponseError(errors.New("修改聊天密码失败"))
@@ -2096,7 +2102,13 @@ func (u *User) setLockScreenPwd(c *wkhttp.Context) {
 	}
 
 	loginUID := c.GetLoginUID()
-	err := u.db.UpdateUsersWithField("lock_screen_pwd", req.LockScreenPwd, loginUID)
+	hashedLockPwd, err := HashPassword(req.LockScreenPwd)
+	if err != nil {
+		u.Error("哈希锁屏密码失败！", zap.Error(err))
+		c.ResponseError(errors.New("修改锁屏密码失败"))
+		return
+	}
+	err = u.db.UpdateUsersWithField("lock_screen_pwd", hashedLockPwd, loginUID)
 	if err != nil {
 		u.Error("修改用户锁屏密码错误", zap.Error(err))
 		c.ResponseError(errors.New("修改用户锁屏密码错误"))
