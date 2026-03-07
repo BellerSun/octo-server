@@ -269,25 +269,52 @@ func (s *Search) global(c *wkhttp.Context) {
 		}
 	}
 
-	// 查询好友
+	// 查询联系人（Space 模式：搜索 Space 成员；否则搜索好友）
 	friendResps := make([]*channelResp, 0)
 	if req.OnlyMessage == 0 {
-		friends, err := s.userService.SearchFriendsWithKeyword(loginUID, req.Keyword)
-		if err != nil {
-			s.Error("查询好友错误", zap.Error(err))
-			c.ResponseError(err)
-			return
-		}
-		if len(friends) > 0 {
-			for _, friend := range friends {
+		spaceID := c.Query("space_id")
+		if spaceID != "" {
+			var members []struct {
+				UID  string `db:"uid"`
+				Name string `db:"name"`
+			}
+			_, err := s.ctx.DB().SelectBySql(
+				"SELECT sm.uid, IFNULL(u.name,'') as name FROM space_member sm LEFT JOIN user u ON sm.uid=u.uid WHERE sm.space_id=? AND sm.status=1 AND (u.name LIKE ? OR sm.uid LIKE ?)",
+				spaceID, "%"+req.Keyword+"%", "%"+req.Keyword+"%",
+			).Load(&members)
+			if err != nil {
+				s.Error("搜索Space成员错误", zap.Error(err))
+			}
+			for _, m := range members {
+				if m.UID == loginUID {
+					continue
+				}
 				escapedKeyword := html.EscapeString(req.Keyword)
-				name := strings.ReplaceAll(friend.Name, req.Keyword, fmt.Sprintf("<mark>%s</mark>", escapedKeyword))
+				name := strings.ReplaceAll(m.Name, req.Keyword, fmt.Sprintf("<mark>%s</mark>", escapedKeyword))
 				friendResps = append(friendResps, &channelResp{
-					ChannelID:     friend.UID,
-					ChannelName:   name,
-					ChannelType:   common.ChannelTypePerson.Uint8(),
-					ChannelRemark: friend.Remark,
+					ChannelID:   m.UID,
+					ChannelName: name,
+					ChannelType: common.ChannelTypePerson.Uint8(),
 				})
+			}
+		} else {
+			friends, err := s.userService.SearchFriendsWithKeyword(loginUID, req.Keyword)
+			if err != nil {
+				s.Error("查询好友错误", zap.Error(err))
+				c.ResponseError(err)
+				return
+			}
+			if len(friends) > 0 {
+				for _, friend := range friends {
+					escapedKeyword := html.EscapeString(req.Keyword)
+					name := strings.ReplaceAll(friend.Name, req.Keyword, fmt.Sprintf("<mark>%s</mark>", escapedKeyword))
+					friendResps = append(friendResps, &channelResp{
+						ChannelID:     friend.UID,
+						ChannelName:   name,
+						ChannelType:   common.ChannelTypePerson.Uint8(),
+						ChannelRemark: friend.Remark,
+					})
+				}
 			}
 		}
 	}
