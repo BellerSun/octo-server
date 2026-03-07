@@ -115,6 +115,9 @@ func (o *OpenAPI) accessTokenGet(c *wkhttp.Context) {
 		return
 	}
 
+	// Delete authcode after successful token exchange to prevent replay attacks
+	_ = o.deleteOpenapiAuthcodeCache(authcode)
+
 	c.JSON(http.StatusOK, gin.H{
 		"access_token": accessToken,
 		"expire":       second,
@@ -183,6 +186,10 @@ func (o *OpenAPI) authcodeGet(c *wkhttp.Context) {
 
 func (o *OpenAPI) setOpenapiAuthcodeCache(uid, appID, authcode string) error {
 	return o.ctx.GetRedisConn().SetAndExpire(fmt.Sprintf("%s%s", o.openapiAuthcodePrefix, authcode), fmt.Sprintf("%s@%s", appID, uid), time.Minute*5)
+}
+
+func (o *OpenAPI) deleteOpenapiAuthcodeCache(authcode string) error {
+	return o.ctx.GetRedisConn().Del(fmt.Sprintf("%s%s", o.openapiAuthcodePrefix, authcode))
 }
 
 func (o *OpenAPI) getOpenapiAuthcodeCache(authcode string) (string, string, error) {
