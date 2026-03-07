@@ -1,10 +1,10 @@
 package openapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/Mininglamp-OSS/octo-server/modules/base/app"
@@ -184,8 +184,14 @@ func (o *OpenAPI) authcodeGet(c *wkhttp.Context) {
 
 }
 
+type tokenData struct {
+	AppID string `json:"app_id"`
+	UID   string `json:"uid"`
+}
+
 func (o *OpenAPI) setOpenapiAuthcodeCache(uid, appID, authcode string) error {
-	return o.ctx.GetRedisConn().SetAndExpire(fmt.Sprintf("%s%s", o.openapiAuthcodePrefix, authcode), fmt.Sprintf("%s@%s", appID, uid), time.Minute*5)
+	data, _ := json.Marshal(tokenData{AppID: appID, UID: uid})
+	return o.ctx.GetRedisConn().SetAndExpire(fmt.Sprintf("%s%s", o.openapiAuthcodePrefix, authcode), string(data), time.Minute*5)
 }
 
 func (o *OpenAPI) deleteOpenapiAuthcodeCache(authcode string) error {
@@ -193,29 +199,30 @@ func (o *OpenAPI) deleteOpenapiAuthcodeCache(authcode string) error {
 }
 
 func (o *OpenAPI) getOpenapiAuthcodeCache(authcode string) (string, string, error) {
-	appIDAndUID, err := o.ctx.GetRedisConn().GetString(fmt.Sprintf("%s%s", o.openapiAuthcodePrefix, authcode))
+	dataStr, err := o.ctx.GetRedisConn().GetString(fmt.Sprintf("%s%s", o.openapiAuthcodePrefix, authcode))
 	if err != nil {
 		return "", "", err
 	}
-	appIDAndUIDArr := strings.Split(appIDAndUID, "@")
-	if len(appIDAndUIDArr) != 2 {
-		return "", "", fmt.Errorf("invalid authcode data")
+	var data tokenData
+	if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
+		return "", "", fmt.Errorf("invalid authcode data: %w", err)
 	}
-	return appIDAndUIDArr[0], appIDAndUIDArr[1], nil
+	return data.AppID, data.UID, nil
 }
 
 func (o *OpenAPI) setOpenapiAccessToken(uid, appID, accessToken string, expire time.Duration) error {
-	return o.ctx.GetRedisConn().SetAndExpire(fmt.Sprintf("%s%s", o.openapiAccessTokenPrefix, accessToken), fmt.Sprintf("%s@%s", appID, uid), expire)
+	data, _ := json.Marshal(tokenData{AppID: appID, UID: uid})
+	return o.ctx.GetRedisConn().SetAndExpire(fmt.Sprintf("%s%s", o.openapiAccessTokenPrefix, accessToken), string(data), expire)
 }
 
 func (o *OpenAPI) getOpenapiAccessToken(accessToken string) (string, string, error) {
-	appIDAndUID, err := o.ctx.GetRedisConn().GetString(fmt.Sprintf("%s%s", o.openapiAccessTokenPrefix, accessToken))
+	dataStr, err := o.ctx.GetRedisConn().GetString(fmt.Sprintf("%s%s", o.openapiAccessTokenPrefix, accessToken))
 	if err != nil {
 		return "", "", err
 	}
-	appIDAndUIDArr := strings.Split(appIDAndUID, "@")
-	if len(appIDAndUIDArr) != 2 {
-		return "", "", fmt.Errorf("invalid access_token data")
+	var data tokenData
+	if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
+		return "", "", fmt.Errorf("invalid access_token data: %w", err)
 	}
-	return appIDAndUIDArr[0], appIDAndUIDArr[1], nil
+	return data.AppID, data.UID, nil
 }
