@@ -194,6 +194,12 @@ func (d *DB) insertInvitation(m *InvitationModel) error {
 	return err
 }
 
+func (d *DB) queryInvitationsBySpaceID(spaceID string) ([]*InvitationModel, error) {
+	var models []*InvitationModel
+	_, err := d.session.Select("*").From("space_invitation").Where("space_id=? AND status=1", spaceID).OrderDir("created_at", false).Load(&models)
+	return models, err
+}
+
 func (d *DB) queryInvitationByCode(code string) (*InvitationModel, error) {
 	var m InvitationModel
 	_, err := d.session.Select("*").From("space_invitation").

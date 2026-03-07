@@ -163,6 +163,13 @@ func (s *Space) getSpace(c *wkhttp.Context) {
 		return
 	}
 
+	// 查询邀请码
+	inviteCode := ""
+	invitations, invErr := s.db.queryInvitationsBySpaceID(spaceId)
+	if invErr == nil && len(invitations) > 0 {
+		inviteCode = invitations[0].InviteCode
+	}
+
 	c.Response(spaceResp{
 		SpaceId:     detail.SpaceId,
 		Name:        detail.Name,
@@ -172,6 +179,7 @@ func (s *Space) getSpace(c *wkhttp.Context) {
 		Status:      detail.Status,
 		Role:        detail.Role,
 		MemberCount: detail.MemberCount,
+		InviteCode:  inviteCode,
 		CreatedAt:   detail.CreatedAt.String(),
 		UpdatedAt:   detail.UpdatedAt.String(),
 	})

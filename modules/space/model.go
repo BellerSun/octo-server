@@ -79,6 +79,7 @@ type spaceResp struct {
 	Status      int    `json:"status"`
 	Role        int    `json:"role"`
 	MemberCount int    `json:"member_count"`
+	InviteCode  string `json:"invite_code"`
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 }
