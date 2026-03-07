@@ -68,9 +68,11 @@ func (rb *Robot) Route(r *wkhttp.WKHttp) {
 
 	auth := r.Group("/v1", rb.ctx.AuthMiddleware(r))
 	{
-		auth.POST("/robot/sync", rb.sync)                // 同步机器人菜单
-		auth.POST("/robot/inline_query", rb.inlineQuery) // 机器人行内搜索
-		auth.GET("/robot/commands", rb.getCommands)       // 查询机器人命令列表
+		auth.POST("/robot/sync", rb.sync)                        // 同步机器人菜单
+		auth.POST("/robot/inline_query", rb.inlineQuery)        // 机器人行内搜索
+		auth.GET("/robot/commands", rb.getCommands)              // 查询机器人命令列表
+		auth.PUT("/robot/:robot_id/description", rb.setDescription) // 设置 Bot 简介
+		auth.PUT("/robot/:robot_id/auto_approve", rb.setAutoApprove) // 设置是否自动通过好友申请
 	}
 
 	robotAuth := r.Group("/v1/robots/:robot_id/:app_key", rb.authRobot()) // :robot_id即user的username
@@ -874,4 +876,70 @@ func (s *simpleRobotMessageResp) from(messageResp *config.MessageResp) {
 		fmt.Println("解码消息正文失败！", err)
 	}
 	s.Payload = payloadMap
+}
+
+// setDescription 设置 Bot 简介
+func (rb *Robot) setDescription(c *wkhttp.Context) {
+	loginUID := c.GetLoginUID()
+	robotID := c.Param("robot_id")
+
+	var req struct {
+		Description string `json:"description"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		c.ResponseError(errors.New("参数错误"))
+		return
+	}
+
+	// 验证操作者是 Bot 创建者
+	var creatorUID string
+	err := rb.ctx.DB().Select("IFNULL(creator_uid,'')").From("robot").Where("robot_id=? AND status=1", robotID).LoadOne(&creatorUID)
+	if err != nil || creatorUID == "" {
+		c.ResponseError(errors.New("机器人不存在"))
+		return
+	}
+	if creatorUID != loginUID {
+		c.ResponseError(errors.New("只有创建者可以修改"))
+		return
+	}
+
+	_, err = rb.ctx.DB().Update("robot").Set("description", req.Description).Where("robot_id=?", robotID).Exec()
+	if err != nil {
+		c.ResponseError(errors.New("更新失败"))
+		return
+	}
+	c.ResponseOK()
+}
+
+// setAutoApprove 设置是否自动通过好友申请
+func (rb *Robot) setAutoApprove(c *wkhttp.Context) {
+	loginUID := c.GetLoginUID()
+	robotID := c.Param("robot_id")
+
+	var req struct {
+		AutoApprove int `json:"auto_approve"` // 0:需审批 1:自动通过
+	}
+	if err := c.BindJSON(&req); err != nil {
+		c.ResponseError(errors.New("参数错误"))
+		return
+	}
+
+	// 验证操作者是 Bot 创建者
+	var creatorUID string
+	err := rb.ctx.DB().Select("IFNULL(creator_uid,'')").From("robot").Where("robot_id=? AND status=1", robotID).LoadOne(&creatorUID)
+	if err != nil || creatorUID == "" {
+		c.ResponseError(errors.New("机器人不存在"))
+		return
+	}
+	if creatorUID != loginUID {
+		c.ResponseError(errors.New("只有创建者可以修改"))
+		return
+	}
+
+	_, err = rb.ctx.DB().Update("robot").Set("auto_approve", req.AutoApprove).Where("robot_id=?", robotID).Exec()
+	if err != nil {
+		c.ResponseError(errors.New("更新失败"))
+		return
+	}
+	c.ResponseOK()
 }

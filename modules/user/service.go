@@ -230,9 +230,10 @@ func (s *Service) GetUserDetail(uid string, loginUID string) (*UserDetailResp, e
 			BotCommands string `db:"bot_commands"`
 			Description string `db:"description"`
 			CreatorUID  string `db:"creator_uid"`
+			AutoApprove int    `db:"auto_approve"`
 		}
 		_, err = s.ctx.DB().SelectBySql(
-			"SELECT IFNULL(bot_commands,'') as bot_commands, IFNULL(description,'') as description, IFNULL(creator_uid,'') as creator_uid FROM robot WHERE robot_id = ? AND status=1", uid,
+			"SELECT IFNULL(bot_commands,'') as bot_commands, IFNULL(description,'') as description, IFNULL(creator_uid,'') as creator_uid, IFNULL(auto_approve,1) as auto_approve FROM robot WHERE robot_id = ? AND status=1", uid,
 		).Load(&botDetails)
 		if err != nil {
 			s.Error("查询机器人详情失败", zap.Error(err))
@@ -242,6 +243,7 @@ func (s *Service) GetUserDetail(uid string, loginUID string) (*UserDetailResp, e
 			}
 			resp.BotDescription = botDetails[0].Description
 			resp.BotCreatorUID = botDetails[0].CreatorUID
+			resp.BotAutoApprove = botDetails[0].AutoApprove
 			// 查创建者昵称
 			if botDetails[0].CreatorUID != "" {
 				var creatorName string
@@ -965,6 +967,7 @@ type UserDetailResp struct {
 	BotDescription      string            `json:"bot_description,omitempty"` // Bot 简介
 	BotCreatorUID       string            `json:"bot_creator_uid,omitempty"` // Bot 创建者 UID
 	BotCreatorName      string            `json:"bot_creator_name,omitempty"` // Bot 创建者昵称
+	BotAutoApprove      int               `json:"bot_auto_approve,omitempty"` // 是否自动通过好友 0:否 1:是
 	IsDestroy           int               `json:"is_destroy"`             // 是否注销0.否1.是
 	Flame               int               `json:"flame"`                  // 是否开启阅后即焚
 	FlameSecond         int               `json:"flame_second"`           // 阅后即焚秒数

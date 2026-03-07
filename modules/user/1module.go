@@ -207,6 +207,9 @@ func newChannelRespWithUserDetailResp(user *UserDetailResp) *model.ChannelResp {
 		extraMap["bot_creator_uid"] = user.BotCreatorUID
 		extraMap["bot_creator_name"] = user.BotCreatorName
 	}
+	if user.Robot == 1 {
+		extraMap["bot_auto_approve"] = user.BotAutoApprove
+	}
 	resp.Extra = extraMap
 
 	return resp
