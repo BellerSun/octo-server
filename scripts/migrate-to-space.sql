@@ -25,7 +25,7 @@ AND uid = (SELECT uid FROM `user` WHERE status = 1 ORDER BY created_at ASC LIMIT
 
 -- 4. 将所有 Robot 也加入 Space（robot 表里的 uid）
 INSERT IGNORE INTO `space_member` (space_id, uid, role, status, created_at, updated_at)
-SELECT @space_id, uid, 0, 1, @now, @now
+SELECT @space_id, robot_id, 0, 1, @now, @now
 FROM `robot`
 WHERE status = 1;
 
