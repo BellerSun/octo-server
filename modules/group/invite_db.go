@@ -33,6 +33,13 @@ func (d *DB) QueryInviteItemDetail(inviteNo string) ([]*InviteItemDetailModel, e
 
 }
 
+// QueryInviteDetailForUpdateTx 在事务内使用 FOR UPDATE 锁定邀请记录，防止并发修改
+func (d *DB) QueryInviteDetailForUpdateTx(inviteNo string, tx *dbr.Tx) (*InviteDetailModel, error) {
+	var model *InviteDetailModel
+	_, err := tx.Select("group_invite.*,IFNULL(user.name,'') inviter_name").From("group_invite").LeftJoin("user", "group_invite.inviter=user.uid").Where("invite_no=?", inviteNo).Suffix("FOR UPDATE").Load(&model)
+	return model, err
+}
+
 // UpdateInviteStatusTx 更新邀请信息状态
 func (d *DB) UpdateInviteStatusTx(allower string, status int, inviteNo string, tx *dbr.Tx) error {
 	_, err := tx.Update("group_invite").Set("allower", allower).Set("status", status).Where("invite_no=?", inviteNo).Exec()

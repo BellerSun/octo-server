@@ -189,71 +189,14 @@ func (g *Group) groupMemberInviteSure(c *wkhttp.Context) {
 		c.ResponseError(errors.New("邀请编号无效！"))
 		return
 	}
-	/**
-	判断邀请信息是否有效
-	**/
-	inviteDetailModel, err := g.db.QueryInviteDetail(inviteNo)
-	if err != nil {
-		g.Error("查询邀请详情失败！", zap.Error(err))
-		c.ResponseError(errors.New("查询邀请详情失败！"))
-		return
-	}
-	if inviteDetailModel == nil {
-		c.ResponseError(errors.New("没有查询到邀请信息！"))
-		return
-	}
-	if inviteDetailModel.Status != InviteStatusWait {
-		c.ResponseError(errors.New("邀请信息不是待邀请状态！"))
-		return
-	}
-	/**
-	查询邀请成员详情
-	**/
-	inviteItemDetilModels, err := g.db.QueryInviteItemDetail(inviteNo)
-	if err != nil {
-		g.Error("查询邀请详情失败！", zap.Error(err))
-		c.ResponseError(errors.New("查询邀请详情失败！"))
-		return
-	}
-	if inviteItemDetilModels == nil || len(inviteItemDetilModels) <= 0 {
-		c.ResponseError(errors.New("没有查到邀请信息！"))
-		return
-	}
-	members := make([]string, 0, len(inviteItemDetilModels))
-	groupNo := inviteItemDetilModels[0].GroupNo
-	inviter := inviteItemDetilModels[0].Inviter
-	for _, inviteItemDetilModel := range inviteItemDetilModels {
-		members = append(members, inviteItemDetilModel.UID)
-	}
-	if groupNo == "" {
-		c.ResponseError(errors.New("群编号不能为空"))
-		return
-	}
-	_, err = g.getGroupInfo(groupNo)
-	if err != nil {
-		c.ResponseError(err)
-		return
-	}
-	/**
-	添加成员
-	**/
-	inviterUser, err := g.userDB.QueryByUID(inviter)
-	if err != nil {
-		g.Error("查询邀请者的用户信息失败！", zap.Error(err))
-		c.ResponseError(errors.New("查询邀请者的用户信息失败！"))
-		return
-	}
-	if inviterUser == nil {
-		g.Error("没有查到邀请者的用户信息！")
-		c.ResponseError(errors.New("没有查到邀请者的用户信息！"))
-		return
-
-	}
 	allower, ok := authMap["allower"].(string)
 	if !ok {
 		c.ResponseError(errors.New("授权者信息无效！"))
 		return
 	}
+	/**
+	开启事务，在事务内用 FOR UPDATE 锁定邀请记录防止并发重复处理
+	**/
 	tx, err := g.ctx.DB().Begin()
 	if err != nil {
 		g.Error("开启事务失败！", zap.Error(err))
@@ -266,6 +209,74 @@ func (g *Group) groupMemberInviteSure(c *wkhttp.Context) {
 			fmt.Fprintf(os.Stderr, "recovered panic in goroutine: %v\n%s\n", err, debug.Stack())
 		}
 	}()
+	/**
+	判断邀请信息是否有效（事务内 FOR UPDATE 锁定）
+	**/
+	inviteDetailModel, err := g.db.QueryInviteDetailForUpdateTx(inviteNo, tx)
+	if err != nil {
+		tx.Rollback()
+		g.Error("查询邀请详情失败！", zap.Error(err))
+		c.ResponseError(errors.New("查询邀请详情失败！"))
+		return
+	}
+	if inviteDetailModel == nil {
+		tx.Rollback()
+		c.ResponseError(errors.New("没有查询到邀请信息！"))
+		return
+	}
+	if inviteDetailModel.Status != InviteStatusWait {
+		tx.Rollback()
+		c.ResponseError(errors.New("邀请信息不是待邀请状态！"))
+		return
+	}
+	/**
+	查询邀请成员详情
+	**/
+	inviteItemDetilModels, err := g.db.QueryInviteItemDetail(inviteNo)
+	if err != nil {
+		tx.Rollback()
+		g.Error("查询邀请详情失败！", zap.Error(err))
+		c.ResponseError(errors.New("查询邀请详情失败！"))
+		return
+	}
+	if inviteItemDetilModels == nil || len(inviteItemDetilModels) <= 0 {
+		tx.Rollback()
+		c.ResponseError(errors.New("没有查到邀请信息！"))
+		return
+	}
+	members := make([]string, 0, len(inviteItemDetilModels))
+	groupNo := inviteItemDetilModels[0].GroupNo
+	inviter := inviteItemDetilModels[0].Inviter
+	for _, inviteItemDetilModel := range inviteItemDetilModels {
+		members = append(members, inviteItemDetilModel.UID)
+	}
+	if groupNo == "" {
+		tx.Rollback()
+		c.ResponseError(errors.New("群编号不能为空"))
+		return
+	}
+	_, err = g.getGroupInfo(groupNo)
+	if err != nil {
+		tx.Rollback()
+		c.ResponseError(err)
+		return
+	}
+	/**
+	添加成员
+	**/
+	inviterUser, err := g.userDB.QueryByUID(inviter)
+	if err != nil {
+		tx.Rollback()
+		g.Error("查询邀请者的用户信息失败！", zap.Error(err))
+		c.ResponseError(errors.New("查询邀请者的用户信息失败！"))
+		return
+	}
+	if inviterUser == nil {
+		tx.Rollback()
+		g.Error("没有查到邀请者的用户信息！")
+		c.ResponseError(errors.New("没有查到邀请者的用户信息！"))
+		return
+	}
 	err = g.db.UpdateInviteStatusTx(allower, InviteStatusOK, inviteNo, tx)
 	if err != nil {
 		tx.Rollback()
