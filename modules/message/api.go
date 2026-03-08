@@ -494,13 +494,15 @@ func (m *Message) messageReaded(c *wkhttp.Context) {
 				continue
 			}
 
-			m.mutex.Lock()
-			err = m.ctx.GetRedisConn().SetAndExpire(
-				fmt.Sprintf("%s%s", CacheReadedCountPrefix, messageIDStr),
-				jsonStr,
-				time.Hour*24*7,
-			)
-			m.mutex.Unlock()
+			func() {
+				m.mutex.Lock()
+				defer m.mutex.Unlock()
+				err = m.ctx.GetRedisConn().SetAndExpire(
+					fmt.Sprintf("%s%s", CacheReadedCountPrefix, messageIDStr),
+					jsonStr,
+					time.Hour*24*7,
+				)
+			}()
 
 			if err != nil {
 				m.Error("添加消息扩展数据到缓存失败！",
