@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Mininglamp-OSS/octo-server/modules/group"
+	spacepkg "github.com/Mininglamp-OSS/octo-server/pkg/space"
 	"github.com/Mininglamp-OSS/octo-server/pkg/util"
 	"github.com/Mininglamp-OSS/octo-server/modules/user"
 	"github.com/Mininglamp-OSS/octo-lib/common"
@@ -148,6 +149,14 @@ func (ch *Channel) channelGet(c *wkhttp.Context) {
 	channelID := c.Param("channel_id")
 	channelTypeI64 := util.ParseInt64OrDefault(c.Param("channel_type"), 0)
 	channelType := uint8(channelTypeI64)
+
+	// 如果是单聊且 channel_id 带 Space 前缀，提取真实 UID
+	if channelType == common.ChannelTypePerson.Uint8() {
+		_, peerID := spacepkg.ParseChannelID(channelID)
+		if peerID != "" {
+			channelID = peerID
+		}
+	}
 
 	modules := register.GetModules(ch.ctx)
 	var err error
