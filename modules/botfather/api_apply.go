@@ -9,6 +9,7 @@ import (
 	"github.com/Mininglamp-OSS/octo-lib/config"
 	"github.com/Mininglamp-OSS/octo-lib/pkg/util"
 	"github.com/Mininglamp-OSS/octo-lib/pkg/wkhttp"
+	"github.com/Mininglamp-OSS/octo-server/modules/space"
 	"github.com/Mininglamp-OSS/octo-server/modules/user"
 	"go.uber.org/zap"
 )
@@ -338,17 +339,24 @@ func (bf *BotFather) createFriendRelation(userUID, robotUID string) error {
 		return err
 	}
 
-	// 添加IM白名单（双向）
+	// 添加IM白名单（双向）— 同时添加裸 UID 和 Space 格式
+	userChannelID := userUID
+	robotChannelID := robotUID
+	spaceID := space.GetCommonSpaceID(bf.ctx, userUID, robotUID)
+	if spaceID != "" {
+		userChannelID = fmt.Sprintf("s%s_%s", spaceID, userUID)
+		robotChannelID = fmt.Sprintf("s%s_%s", spaceID, robotUID)
+	}
 	_ = bf.ctx.IMWhitelistAdd(config.ChannelWhitelistReq{
 		ChannelReq: config.ChannelReq{
-			ChannelID:   userUID,
+			ChannelID:   userChannelID,
 			ChannelType: common.ChannelTypePerson.Uint8(),
 		},
 		UIDs: []string{robotUID},
 	})
 	_ = bf.ctx.IMWhitelistAdd(config.ChannelWhitelistReq{
 		ChannelReq: config.ChannelReq{
-			ChannelID:   robotUID,
+			ChannelID:   robotChannelID,
 			ChannelType: common.ChannelTypePerson.Uint8(),
 		},
 		UIDs: []string{userUID},
