@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 	"errors"
+	"fmt"
 )
 
 // AesEncryptSimple 加密
@@ -40,6 +41,9 @@ func AesEncrypt(origData []byte, key []byte, iv []byte, paddingFunc func([]byte,
 		return nil, err
 	}
 	blockSize := block.BlockSize()
+	if len(iv) != blockSize {
+		return nil, fmt.Errorf("iv length %d does not match block size %d", len(iv), blockSize)
+	}
 	origData = paddingFunc(origData, blockSize)
 
 	blockMode := cipher.NewCBCEncrypter(block, iv)
@@ -77,6 +81,9 @@ func AesDecrypt(crypted, key []byte, iv []byte, unPaddingFunc func([]byte) ([]by
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
+	}
+	if len(iv) != block.BlockSize() {
+		return nil, fmt.Errorf("iv length %d does not match block size %d", len(iv), block.BlockSize())
 	}
 	blockMode := cipher.NewCBCDecrypter(block, iv)
 	origData := make([]byte, len(crypted))
