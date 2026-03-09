@@ -185,13 +185,22 @@ func (h *commandHandler) handleNewBot(fromUID string) {
 
 func (h *commandHandler) handleMyBots(fromUID string) {
 	h.sm.Clear(fromUID)
-	bots, err := h.db.queryRobotsByCreatorUID(extractRealUID(fromUID))
+	realUID := extractRealUID(fromUID)
+	// Check if creator user exists and is active (helps diagnose /mybots failures)
+	var userStatus int
+	statusErr := h.db.session.SelectBySql("SELECT COALESCE((SELECT status FROM user WHERE uid = ?), -1)", realUID).LoadOne(&userStatus)
+	if statusErr != nil {
+		userStatus = -2 // query failed
+	}
+	h.Info("/mybots query", zap.String("fromUID", fromUID), zap.String("realUID", realUID), zap.Int("creator_user_status", userStatus))
+	bots, err := h.db.queryRobotsByCreatorUID(realUID)
 	if err != nil {
-		h.Error("查询机器人列表失败", zap.Error(err))
+		h.Error("查询机器人列表失败", zap.Error(err), zap.String("realUID", realUID))
 		h.reply(fromUID, "查询失败，请稍后重试。")
 		return
 	}
 	if len(bots) == 0 {
+		h.Info("/mybots returned 0 results", zap.String("realUID", realUID))
 		h.reply(fromUID, "你还没有创建机器人。发送 /newbot 创建一个。")
 		return
 	}

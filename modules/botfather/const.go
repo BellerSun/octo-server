@@ -5,6 +5,9 @@ const (
 	BotFatherUID = "botfather"
 	// BotFatherName BotFather的显示名称
 	BotFatherName = "BotFather"
+	// System UIDs excluded from bot-related batch operations
+	systemUIDAdmin      = "u_10000"
+	systemUIDFileHelper = "fileHelper"
 	// BotTokenPrefix Bot Token前缀
 	BotTokenPrefix = "bf_"
 	// BotUsernameSuffix 机器人用户名后缀
@@ -57,3 +60,8 @@ const (
 	FieldBotID   = "bot_id"
 	FieldBotName = "bot_name"
 )
+
+// systemExcludedUIDs is the canonical list of system UIDs excluded from
+// batch bot operations (ensureBotFatherFriends, repairOrphanBots, etc.).
+// Maintain this single list to avoid drift between functions.
+var systemExcludedUIDs = []string{BotFatherUID, systemUIDAdmin, systemUIDFileHelper}

@@ -255,6 +255,9 @@ func (bf *BotFather) initBotFatherUser() {
 	// 确保BotFather与所有用户建立好友关系
 	bf.ensureBotFatherFriends()
 
+	// 修复孤儿 Bot — user 表有 robot=1 但 robot 表无记录（#234 遗留数据）
+	bf.repairOrphanBots()
+
 	// 注册BotFather自身的命令列表
 	bf.registerBotFatherCommands()
 }
@@ -295,14 +298,102 @@ func (bf *BotFather) ensureBotFatherFriends() {
 	_, err := bf.db.session.InsertBySql(`
 		INSERT IGNORE INTO friend (uid, to_uid, version)
 		SELECT u.uid, ?, 1 FROM user u
-		WHERE u.uid NOT IN (?, 'u_10000', 'fileHelper')
+		WHERE u.uid NOT IN (?, ?, ?)
 		AND u.status = 1
 		AND NOT EXISTS (
 			SELECT 1 FROM friend f WHERE f.uid = u.uid AND f.to_uid = ?
 		)
-	`, BotFatherUID, BotFatherUID, BotFatherUID).Exec()
+	`, BotFatherUID, systemExcludedUIDs[0], systemExcludedUIDs[1], systemExcludedUIDs[2], BotFatherUID).Exec()
 	if err != nil {
 		bf.Warn("批量添加BotFather好友关系失败", zap.Error(err))
+	}
+}
+
+// repairOrphanBots finds users with robot=1 that have no corresponding robot
+// table record (caused by the pre-#289 non-atomic createBot flow) and creates
+// the missing robot records so /mybots and the sidebar can find them.
+func (bf *BotFather) repairOrphanBots() {
+	type orphan struct {
+		UID      string `db:"uid"`
+		Username string `db:"username"`
+	}
+	var orphans []orphan
+	_, err := bf.db.session.SelectBySql(`
+		SELECT u.uid, u.username FROM user u
+		WHERE u.robot = 1
+		AND u.uid NOT IN (?, ?, ?)
+		AND NOT EXISTS (
+			SELECT 1 FROM robot r WHERE r.robot_id = u.uid
+		)
+	`, systemExcludedUIDs[0], systemExcludedUIDs[1], systemExcludedUIDs[2]).Load(&orphans)
+	if err != nil {
+		bf.Warn("查询孤儿Bot失败", zap.Error(err))
+		return
+	}
+	if len(orphans) == 0 {
+		return
+	}
+
+	bf.Info("发现孤儿Bot，开始修复", zap.Int("count", len(orphans)))
+	for _, o := range orphans {
+		// Try to find the creator from friend table (the non-bot user who friended this bot)
+		var creatorUID string
+		err := bf.db.session.SelectBySql(`
+			SELECT f.uid FROM friend f
+			INNER JOIN user u ON f.uid = u.uid AND u.robot = 0
+			WHERE f.to_uid = ? AND f.is_deleted = 0
+			ORDER BY f.id ASC
+			LIMIT 1
+		`, o.UID).LoadOne(&creatorUID)
+		if err != nil || creatorUID == "" {
+			bf.Warn("无法确定孤儿Bot的创建者，跳过", zap.String("bot_uid", o.UID), zap.Error(err))
+			continue
+		}
+		bf.Info("孤儿Bot创建者推断自friend表", zap.String("bot_uid", o.UID), zap.String("inferred_creator", creatorUID))
+
+		// Create app if missing. CreateApp is idempotent: if the app already
+		// exists (which is expected for orphan bots — createBot calls CreateApp
+		// before the failing robot insert), it returns the existing record.
+		appResp, err := bf.appService.CreateApp(app.Req{AppID: o.UID})
+		if err != nil {
+			bf.Warn("修复孤儿Bot：创建App失败", zap.String("bot_uid", o.UID), zap.Error(err))
+			continue
+		}
+
+		tx, err := bf.db.session.Begin()
+		if err != nil {
+			bf.Warn("修复孤儿Bot：开启事务失败", zap.String("bot_uid", o.UID), zap.Error(err))
+			continue
+		}
+
+		version, err := bf.ctx.GenSeq(common.RobotSeqKey)
+		if err != nil {
+			tx.Rollback()
+			bf.Warn("修复孤儿Bot：GenSeq失败", zap.String("bot_uid", o.UID), zap.Error(err))
+			continue
+		}
+
+		err = bf.db.insertRobotTx(&robotModel{
+			AppID:      appResp.AppID,
+			RobotID:    o.UID,
+			Username:   o.Username,
+			Token:      appResp.AppKey,
+			Version:    version,
+			Status:     1,
+			CreatorUID: creatorUID,
+		}, tx)
+		if err != nil {
+			tx.Rollback()
+			bf.Warn("修复孤儿Bot：插入robot记录失败", zap.String("bot_uid", o.UID), zap.Error(err))
+			continue
+		}
+
+		if err = tx.Commit(); err != nil {
+			bf.Warn("修复孤儿Bot：提交事务失败", zap.String("bot_uid", o.UID), zap.Error(err))
+			continue
+		}
+
+		bf.Info("修复孤儿Bot成功", zap.String("bot_uid", o.UID), zap.String("creator", creatorUID))
 	}
 }
 
