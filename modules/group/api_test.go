@@ -620,3 +620,92 @@ func TestGroupMembersGet(t *testing.T) {
 	assert.Contains(t, w.Body.String(), `"uid":"member1"`)
 	assert.Contains(t, w.Body.String(), `"uid":"member2"`)
 }
+
+func TestGroupDetailGet_MemberCanAccess(t *testing.T) {
+	s, ctx := testutil.NewTestServer()
+	f := New(ctx)
+	f.Route(s.GetRoute())
+
+	err := testutil.CleanAllTables(ctx)
+	assert.NoError(t, err)
+
+	// Create a group
+	err = f.db.Insert(&Model{
+		GroupNo: "detail_test_group",
+		Name:    "Test Group",
+		Creator: testutil.UID,
+		Status:  1,
+		Notice:  "Sensitive notice content",
+	})
+	assert.NoError(t, err)
+
+	// Add testutil.UID as a member
+	err = f.db.InsertMember(&MemberModel{
+		GroupNo: "detail_test_group",
+		UID:     testutil.UID,
+		Role:    MemberRoleCommon,
+		Version: 1,
+	})
+	assert.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/v1/groups/detail_test_group/detail", nil)
+	req.Header.Set("token", testutil.Token)
+	assert.NoError(t, err)
+	s.GetRoute().ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"name":"Test Group"`)
+}
+
+func TestGroupDetailGet_NonMemberDenied(t *testing.T) {
+	s, ctx := testutil.NewTestServer()
+	f := New(ctx)
+	f.Route(s.GetRoute())
+
+	err := testutil.CleanAllTables(ctx)
+	assert.NoError(t, err)
+
+	// Create a group without adding the test user as member
+	err = f.db.Insert(&Model{
+		GroupNo: "detail_test_group2",
+		Name:    "Private Group",
+		Creator: "other_user",
+		Status:  1,
+		Notice:  "Secret notice",
+	})
+	assert.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/v1/groups/detail_test_group2/detail", nil)
+	req.Header.Set("token", testutil.Token)
+	assert.NoError(t, err)
+	s.GetRoute().ServeHTTP(w, req)
+	// Should return 403 Forbidden for non-members
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "无权限查看群详情")
+}
+
+func TestGroupDetailGet_UnauthenticatedDenied(t *testing.T) {
+	s, ctx := testutil.NewTestServer()
+	f := New(ctx)
+	f.Route(s.GetRoute())
+
+	err := testutil.CleanAllTables(ctx)
+	assert.NoError(t, err)
+
+	err = f.db.Insert(&Model{
+		GroupNo: "detail_test_group3",
+		Name:    "Another Group",
+		Creator: "creator",
+		Status:  1,
+	})
+	assert.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	// Request without auth token
+	req, err := http.NewRequest("GET", "/v1/groups/detail_test_group3/detail", nil)
+	assert.NoError(t, err)
+	s.GetRoute().ServeHTTP(w, req)
+	// Should be unauthorized
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}

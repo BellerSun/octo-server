@@ -97,11 +97,11 @@ func (g *Group) Route(r *wkhttp.WKHttp) {
 		groups.POST("/:group_no/forbidden_with_member", g.forbiddenWithGroupMember)        // 禁言或解禁某个群成员
 		groups.POST("/:group_no/avatar", g.avatarUpload)                                   // 上传群头像
 		groups.DELETE("/:group_no/disband", g.disband)                                     // 解散群
+		groups.GET("/:group_no/detail", g.groupDetailGet)                                  // 获取群详情
 	}
 	openGroups := r.Group("/v1/groups")
 	{ // 获取群头像
 		openGroups.GET("/:group_no/avatar", g.avatarGet)       // 获取群头像
-		openGroups.GET("/:group_no/detail", g.groupDetailGet)  // 群详情
 		openGroups.GET("/:group_no/scanjoin", g.groupScanJoin) // 扫码加入群
 	}
 	openGroup := r.Group("/v1/group")
@@ -424,6 +424,8 @@ func (g *Group) groupGet(c *wkhttp.Context) {
 // 获取群详情
 func (g *Group) groupDetailGet(c *wkhttp.Context) {
 	groupNo := c.Param("group_no")
+	loginUID := c.GetLoginUID()
+
 	groupModel, err := g.db.QueryWithGroupNo(groupNo)
 	if err != nil {
 		g.Error("查询群信息失败！", zap.Error(err))
@@ -434,6 +436,19 @@ func (g *Group) groupDetailGet(c *wkhttp.Context) {
 		c.ResponseError(errors.New("群不存在！"))
 		return
 	}
+
+	// 检查用户是否是群成员
+	isMember, err := g.db.ExistMember(loginUID, groupNo)
+	if err != nil {
+		g.Error("检查群成员失败！", zap.Error(err))
+		c.ResponseError(errors.New("检查群成员失败！"))
+		return
+	}
+	if !isMember {
+		c.ResponseErrorWithStatus(errors.New("无权限查看群详情"), http.StatusForbidden)
+		return
+	}
+
 	memberCount, err := g.db.QueryMemberCount(groupNo)
 	if err != nil {
 		g.Error("查询成员数量失败！", zap.Error(err))
