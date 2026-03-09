@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -863,7 +864,7 @@ func (bf *BotFather) heartbeat(c *wkhttp.Context) {
 
 // ========== Bot File API ==========
 
-// botProxyFile Bot文件下载代理 — 302重定向到presigned URL
+// botProxyFile Bot文件下载代理 — 后端读取文件内容写入response（避免MinIO签名问题）
 func (bf *BotFather) botProxyFile(c *wkhttp.Context) {
 	ph := c.Param("path")
 	if ph == "" {
@@ -871,7 +872,7 @@ func (bf *BotFather) botProxyFile(c *wkhttp.Context) {
 		return
 	}
 	ph = strings.TrimPrefix(ph, "/")
-	// Strip file storage prefix to avoid double "file/" in redirect URL
+	// Strip file storage prefix to avoid double "file/" in path
 	ph = strings.TrimPrefix(ph, "file/")
 
 	filename := c.Query("filename")
@@ -888,7 +889,45 @@ func (bf *BotFather) botProxyFile(c *wkhttp.Context) {
 		c.ResponseError(errors.New("获取文件失败"))
 		return
 	}
-	c.Redirect(http.StatusFound, downloadURL)
+
+	// 解析下载URL，去掉查询参数（MinIO 要求 presigned URL 才能使用 response-content-disposition 等参数）
+	parsedURL, err := url.Parse(downloadURL)
+	if err != nil {
+		bf.Error("解析下载URL失败", zap.Error(err))
+		c.ResponseError(errors.New("获取文件失败"))
+		return
+	}
+	parsedURL.RawQuery = ""
+	plainURL := parsedURL.String()
+
+	// 从存储后端读取文件
+	resp, err := http.Get(plainURL)
+	if err != nil {
+		bf.Error("读取文件失败", zap.Error(err), zap.String("url", plainURL))
+		c.ResponseError(errors.New("获取文件失败"))
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bf.Error("存储后端返回错误", zap.Int("status", resp.StatusCode), zap.String("url", plainURL))
+		c.ResponseError(errors.New("获取文件失败"))
+		return
+	}
+
+	// 设置响应头
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	c.Header("Content-Type", contentType)
+	if resp.ContentLength > 0 {
+		c.Header("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
+	}
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", url.PathEscape(filename)))
+
+	c.Status(http.StatusOK)
+	io.Copy(c.Writer, resp.Body)
 }
 
 // botUploadFile Bot文件上传
