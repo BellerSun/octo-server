@@ -488,3 +488,273 @@ func TestJoinSpaceUnlimitedCapacity(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), `"space_id":"test-space-unlimited"`)
 }
+
+// === Preset Group Tests (PR #529) ===
+
+func TestJoinSpaceWithPresetGroup(t *testing.T) {
+	s, ctx := testutil.NewTestServer()
+	f := New(ctx)
+	f.Route(s.GetRoute())
+
+	// 清空旧数据
+	err := testutil.CleanAllTables(ctx)
+	assert.NoError(t, err)
+
+	// 创建测试群组
+	groupNo := "test-group-001"
+	_, err = ctx.DB().InsertInto("group").Columns("group_no", "name", "creator", "status").
+		Values(groupNo, "测试预置群", "admin", 1).Exec()
+	assert.NoError(t, err)
+
+	// 创建测试 Space（带预置群）
+	spaceId := "test-space-preset"
+	inviteCode := "preset123"
+	err = f.db.insertSpaceNoTx(&SpaceModel{
+		SpaceId:        spaceId,
+		Name:           "带预置群的空间",
+		PresetGroupIds: `["` + groupNo + `"]`,
+		Creator:        "admin",
+		Status:         1,
+	})
+	assert.NoError(t, err)
+
+	// 添加管理员成员
+	err = f.db.insertMemberNoTx(&MemberModel{
+		SpaceId: spaceId,
+		UID:     "admin",
+		Role:    2,
+		Status:  1,
+	})
+	assert.NoError(t, err)
+
+	// 创建邀请码
+	err = f.db.insertInvitation(&InvitationModel{
+		SpaceId:    spaceId,
+		InviteCode: inviteCode,
+		Creator:    "admin",
+		Status:     1,
+	})
+	assert.NoError(t, err)
+
+	// 新用户加入 Space
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("POST", "/v1/space/join",
+		bytes.NewReader([]byte(util.ToJson(map[string]string{
+			"invite_code": inviteCode,
+		}))))
+	req.Header.Set("token", testutil.Token)
+	assert.NoError(t, err)
+	s.GetRoute().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), spaceId)
+
+	// 验证用户已加入预置群（使用 Eventually 等待异步操作完成）
+	assert.Eventually(t, func() bool {
+		var count int
+		_, err := ctx.DB().SelectBySql("SELECT COUNT(*) FROM group_member WHERE group_no=? AND uid=? AND is_deleted=0", groupNo, testutil.UID).Load(&count)
+		return err == nil && count == 1
+	}, time.Second, 10*time.Millisecond, "用户应该已自动加入预置群")
+}
+
+func TestJoinSpaceWithNoPresetGroup(t *testing.T) {
+	s, ctx := testutil.NewTestServer()
+	f := New(ctx)
+	f.Route(s.GetRoute())
+
+	// 清空旧数据
+	err := testutil.CleanAllTables(ctx)
+	assert.NoError(t, err)
+
+	// 创建测试 Space（不带预置群）
+	spaceId := "test-space-no-preset"
+	inviteCode := "nopreset1"
+	err = f.db.insertSpaceNoTx(&SpaceModel{
+		SpaceId:        spaceId,
+		Name:           "无预置群的空间",
+		PresetGroupIds: "", // 没有预置群
+		Creator:        "admin",
+		Status:         1,
+	})
+	assert.NoError(t, err)
+
+	// 添加管理员成员
+	err = f.db.insertMemberNoTx(&MemberModel{
+		SpaceId: spaceId,
+		UID:     "admin",
+		Role:    2,
+		Status:  1,
+	})
+	assert.NoError(t, err)
+
+	// 创建邀请码
+	err = f.db.insertInvitation(&InvitationModel{
+		SpaceId:    spaceId,
+		InviteCode: inviteCode,
+		Creator:    "admin",
+		Status:     1,
+	})
+	assert.NoError(t, err)
+
+	// 新用户加入 Space
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("POST", "/v1/space/join",
+		bytes.NewReader([]byte(util.ToJson(map[string]string{
+			"invite_code": inviteCode,
+		}))))
+	req.Header.Set("token", testutil.Token)
+	assert.NoError(t, err)
+	s.GetRoute().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), spaceId)
+
+	// 验证用户已加入 Space
+	member, err := f.db.queryMember(spaceId, testutil.UID)
+	assert.NoError(t, err)
+	assert.NotNil(t, member)
+}
+
+func TestJoinSpacePresetGroupIdempotent(t *testing.T) {
+	s, ctx := testutil.NewTestServer()
+	f := New(ctx)
+	f.Route(s.GetRoute())
+
+	// 清空旧数据
+	err := testutil.CleanAllTables(ctx)
+	assert.NoError(t, err)
+
+	// 创建测试群组
+	groupNo := "test-group-idem"
+	_, err = ctx.DB().InsertInto("group").Columns("group_no", "name", "creator", "status").
+		Values(groupNo, "幂等测试群", "admin", 1).Exec()
+	assert.NoError(t, err)
+
+	// 用户已在群中
+	_, err = ctx.DB().InsertInto("group_member").
+		Columns("group_no", "uid", "role", "is_deleted", "status").
+		Values(groupNo, testutil.UID, 0, 0, 1).Exec()
+	assert.NoError(t, err)
+
+	// 创建测试 Space（带预置群）
+	spaceId := "test-space-idem"
+	inviteCode := "idem1234"
+	err = f.db.insertSpaceNoTx(&SpaceModel{
+		SpaceId:       spaceId,
+		Name:          "幂等测试空间",
+		PresetGroupIds: `["` + groupNo + `"]`,
+		Creator:       "admin",
+		Status:        1,
+	})
+	assert.NoError(t, err)
+
+	// 添加管理员成员
+	err = f.db.insertMemberNoTx(&MemberModel{
+		SpaceId: spaceId,
+		UID:     "admin",
+		Role:    2,
+		Status:  1,
+	})
+	assert.NoError(t, err)
+
+	// 创建邀请码
+	err = f.db.insertInvitation(&InvitationModel{
+		SpaceId:    spaceId,
+		InviteCode: inviteCode,
+		Creator:    "admin",
+		Status:     1,
+	})
+	assert.NoError(t, err)
+
+	// 用户加入 Space（已在群中）
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("POST", "/v1/space/join",
+		bytes.NewReader([]byte(util.ToJson(map[string]string{
+			"invite_code": inviteCode,
+		}))))
+	req.Header.Set("token", testutil.Token)
+	assert.NoError(t, err)
+	s.GetRoute().ServeHTTP(w, req)
+
+	// 加入 Space 应该成功（不应因为已在群中而失败）
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// 验证群成员记录仍然只有一条（使用 Eventually 等待异步操作完成）
+	assert.Eventually(t, func() bool {
+		var count int
+		_, err := ctx.DB().SelectBySql("SELECT COUNT(*) FROM group_member WHERE group_no=? AND uid=?", groupNo, testutil.UID).Load(&count)
+		return err == nil && count == 1
+	}, time.Second, 10*time.Millisecond, "群成员记录应该只有一条（幂等）")
+}
+
+func TestJoinSpacePresetGroupDisbanded(t *testing.T) {
+	s, ctx := testutil.NewTestServer()
+	f := New(ctx)
+	f.Route(s.GetRoute())
+
+	// 清空旧数据
+	err := testutil.CleanAllTables(ctx)
+	assert.NoError(t, err)
+
+	// 创建已解散的群组（status=2 表示解散）
+	groupNo := "test-group-disbanded"
+	_, err = ctx.DB().InsertInto("group").Columns("group_no", "name", "creator", "status").
+		Values(groupNo, "已解散的群", "admin", 2).Exec()
+	assert.NoError(t, err)
+
+	// 创建测试 Space（带已解散的预置群）
+	spaceId := "test-space-disbanded"
+	inviteCode := "disband1"
+	err = f.db.insertSpaceNoTx(&SpaceModel{
+		SpaceId:       spaceId,
+		Name:          "预置群已解散的空间",
+		PresetGroupIds: `["` + groupNo + `"]`,
+		Creator:       "admin",
+		Status:        1,
+	})
+	assert.NoError(t, err)
+
+	// 添加管理员成员
+	err = f.db.insertMemberNoTx(&MemberModel{
+		SpaceId: spaceId,
+		UID:     "admin",
+		Role:    2,
+		Status:  1,
+	})
+	assert.NoError(t, err)
+
+	// 创建邀请码
+	err = f.db.insertInvitation(&InvitationModel{
+		SpaceId:    spaceId,
+		InviteCode: inviteCode,
+		Creator:    "admin",
+		Status:     1,
+	})
+	assert.NoError(t, err)
+
+	// 用户加入 Space
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("POST", "/v1/space/join",
+		bytes.NewReader([]byte(util.ToJson(map[string]string{
+			"invite_code": inviteCode,
+		}))))
+	req.Header.Set("token", testutil.Token)
+	assert.NoError(t, err)
+	s.GetRoute().ServeHTTP(w, req)
+
+	// 加入 Space 应该成功（预置群解散不影响主流程）
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// 验证用户没有加入已解散的群（使用 Eventually 确保异步操作已完成）
+	// 注意：这里验证的是 count == 0，需要等待足够时间确保如果会加入，已经加入了
+	time.Sleep(50 * time.Millisecond) // 给异步操作一点时间
+	var count int
+	_, err = ctx.DB().SelectBySql("SELECT COUNT(*) FROM group_member WHERE group_no=? AND uid=?", groupNo, testutil.UID).Load(&count)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, count, "用户不应该加入已解散的群")
+
+	// 验证用户已加入 Space
+	member, err := f.db.queryMember(spaceId, testutil.UID)
+	assert.NoError(t, err)
+	assert.NotNil(t, member)
+}

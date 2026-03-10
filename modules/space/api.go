@@ -931,3 +931,4 @@ func (s *Space) loadKnownSpaceIDs() {
 	spacepkg.RegisterSpaceIDs(ids)
 	s.Info("已注册 spaceId 到 ParseChannelID 缓存", zap.Int("count", len(ids)), zap.Strings("ids", ids))
 }
+
