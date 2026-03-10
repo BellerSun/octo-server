@@ -117,6 +117,7 @@ func (w *Webhook) getBlacklist(data map[string]interface{}) ([]string, error) {
 	if err := util.ReadJsonByByte([]byte(util.ToJson(data)), &channelReq); err != nil {
 		return nil, err
 	}
+	w.Info("getBlacklist called", zap.String("channelID", channelReq.ChannelID), zap.Uint8("channelType", channelReq.ChannelType), zap.Bool("isFake", common.IsFakeChannel(channelReq.ChannelID)))
 	if channelReq.ChannelType == uint8(common.ChannelTypePerson) && common.IsFakeChannel(channelReq.ChannelID) {
 		uids := strings.Split(channelReq.ChannelID, "@")
 		if len(uids) < 2 {
@@ -131,6 +132,7 @@ func (w *Webhook) getBlacklist(data map[string]interface{}) ([]string, error) {
 		}
 
 		// Bot 好友关系检查：如果 DM 的一方是 Bot 且另一方不是其好友，则加入黑名单
+		w.Info("Bot friend check", zap.Strings("uids", uids))
 		for i, uid := range uids {
 			if uid == "botfather" {
 				continue
@@ -141,6 +143,7 @@ func (w *Webhook) getBlacklist(data map[string]interface{}) ([]string, error) {
 			}
 			if isBot {
 				otherUID := uids[1-i]
+				w.Info("Bot detected, checking friend", zap.String("botUID", uid), zap.String("otherUID", otherUID))
 				isFriend, err := w.userService.IsFriend(otherUID, uid)
 				if err != nil {
 					return nil, err
