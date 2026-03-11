@@ -248,6 +248,19 @@ func (h *commandHandler) handleMyBots(fromUID string) {
 		h.reply(fromUID, "查询失败，请稍后重试。")
 		return
 	}
+	// Filter out any bots with status != 1 as a defensive measure
+	var activeBots []*robotModel
+	for _, bot := range bots {
+		if bot.Status == 1 {
+			activeBots = append(activeBots, bot)
+		} else {
+			h.Warn("/mybots: filtered out bot with unexpected status",
+				zap.String("robot_id", bot.RobotID),
+				zap.Int("status", bot.Status))
+		}
+	}
+	bots = activeBots
+
 	if len(bots) == 0 {
 		h.Info("/mybots returned 0 results", zap.String("realUID", realUID))
 		h.reply(fromUID, "你还没有创建机器人。发送 /newbot 创建一个。")

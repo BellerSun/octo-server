@@ -30,9 +30,10 @@ var TreeState string  // git tree state
 func loadConfigFromFile(cfgFile string) *viper.Viper {
 	vp := viper.New()
 	vp.SetConfigFile(cfgFile)
-	if err := vp.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", vp.ConfigFileUsed())
+	if err := vp.ReadInConfig(); err != nil {
+		panic(fmt.Sprintf("Failed to load config file %s: %v", cfgFile, err))
 	}
+	fmt.Println("Using config file:", vp.ConfigFileUsed())
 	return vp
 }
 

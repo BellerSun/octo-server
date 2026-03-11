@@ -76,13 +76,15 @@ func (u *User) emailRegister(c *wkhttp.Context) {
 		return
 	}
 
-	// 验证邮箱验证码（312活动期间暂时跳过）
-	if strings.TrimSpace(req.Code) != "" {
-		emailService := commonapi.NewEmailService(u.ctx)
-		if err := emailService.Verify(context.Background(), req.Email, req.Code, commonapi.CodeTypeRegister); err != nil {
-			c.ResponseError(err)
-			return
-		}
+	// 验证邮箱验证码
+	if strings.TrimSpace(req.Code) == "" {
+		c.ResponseError(errors.New("验证码不能为空"))
+		return
+	}
+	emailService := commonapi.NewEmailService(u.ctx)
+	if err := emailService.Verify(context.Background(), req.Email, req.Code, commonapi.CodeTypeRegister); err != nil {
+		c.ResponseError(err)
+		return
 	}
 
 	// 检查邮箱是否已注册
