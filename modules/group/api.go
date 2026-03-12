@@ -1456,6 +1456,20 @@ func (g *Group) managerAdd(c *wkhttp.Context) {
 		return
 	}
 
+	// Verify all target UIDs are current group members before promoting
+	for _, uid := range memberUIDs {
+		isMember, err := g.db.ExistMember(uid, groupNo)
+		if err != nil {
+			g.Error("查询群成员关系失败", zap.String("uid", uid), zap.Error(err))
+			c.ResponseError(errors.New("查询群成员关系失败"))
+			return
+		}
+		if !isMember {
+			c.ResponseError(errors.New("目标用户不是群成员，无法设为管理员"))
+			return
+		}
+	}
+
 	err = g.db.UpdateMembersToManager(groupNo, memberUIDs, version)
 	if err != nil {
 		g.Error("更新成员为管理员失败！", zap.Any("memberUIDs", memberUIDs), zap.Error(err))
