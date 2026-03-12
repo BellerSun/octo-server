@@ -3,6 +3,7 @@ package channel
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"strconv"
 	"time"
 
@@ -79,6 +80,25 @@ func (ch *Channel) getStoryline(c *wkhttp.Context) {
 
 	// 解析查询参数
 	filter := c.DefaultQuery("filter", "all") // all | with_ai | with_user:{uid}
+
+	// Validate with_user filter target is a group member
+	if strings.HasPrefix(filter, "with_user:") {
+		targetUID := strings.TrimPrefix(filter, "with_user:")
+		if targetUID == "" {
+			c.ResponseError(errors.New("with_user 过滤器缺少目标用户"))
+			return
+		}
+		targetIsMember, err := ch.groupService.ExistMember(channelID, targetUID)
+		if err != nil {
+			ch.Error("查询目标用户群成员信息错误", zap.Error(err))
+			c.ResponseError(errors.New("查询群成员信息错误"))
+			return
+		}
+		if !targetIsMember {
+			c.ResponseError(errors.New("目标用户不是群成员"))
+			return
+		}
+	}
 	pageSizeStr := c.DefaultQuery("page_size", strconv.Itoa(DefaultPageSize))
 	cursor := c.Query("cursor") // 分页游标（基于时间戳）
 
@@ -213,8 +233,8 @@ func filterStorylineMessages(messages []*storylineMessage, loginUID string, filt
 			}
 		default:
 			// with_user:{uid} 格式
-			if len(filter) > 10 && filter[:10] == "with_user:" {
-				targetUID := filter[10:]
+			if strings.HasPrefix(filter, "with_user:") {
+				targetUID := strings.TrimPrefix(filter, "with_user:")
 				if isFromUser || msg.FromUID == targetUID {
 					filtered = append(filtered, msg)
 				}
