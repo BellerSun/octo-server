@@ -709,7 +709,7 @@ func (s *Space) joinSpace(c *wkhttp.Context) {
 
 	// 异步加入预设群组（不影响 joinSpace 结果）
 	if space.PresetGroupIds != nil && *space.PresetGroupIds != "" {
-		go s.joinPresetGroups(loginUID, *space.PresetGroupIds)
+		go s.joinPresetGroups(loginUID, space.SpaceId, *space.PresetGroupIds)
 	}
 
 	// 触发 SpaceMemberJoin 事件
@@ -717,7 +717,13 @@ func (s *Space) joinSpace(c *wkhttp.Context) {
 }
 
 // joinPresetGroups 将用户加入预设群组（通过直接DB操作避免循环依赖）
-func (s *Space) joinPresetGroups(uid string, presetGroupIdsJSON string) {
+func (s *Space) joinPresetGroups(uid string, spaceID string, presetGroupIdsJSON string) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.Error("joinPresetGroups panic", zap.Any("recover", r), zap.String("uid", uid), zap.String("spaceID", spaceID))
+		}
+	}()
+
 	var groupNos []string
 	if err := json.Unmarshal([]byte(presetGroupIdsJSON), &groupNos); err != nil {
 		s.Warn("解析预设群组ID失败", zap.String("preset_group_ids", presetGroupIdsJSON), zap.Error(err))
@@ -729,11 +735,11 @@ func (s *Space) joinPresetGroups(uid string, presetGroupIdsJSON string) {
 		if groupNo == "" {
 			continue
 		}
-		// 检查群是否存在且未解散
+		// 检查群是否存在、未解散，且属于当前 Space
 		var groupStatus int
-		count, err := session.SelectBySql("SELECT status FROM `group` WHERE group_no=?", groupNo).Load(&groupStatus)
+		count, err := session.SelectBySql("SELECT status FROM `group` WHERE group_no=? AND space_id=?", groupNo, spaceID).Load(&groupStatus)
 		if err != nil || count == 0 || groupStatus != 1 {
-			s.Warn("预设群组不存在或已解散，跳过", zap.String("group_no", groupNo))
+			s.Warn("预设群组不存在、已解散或不属于当前 Space，跳过", zap.String("group_no", groupNo), zap.String("space_id", spaceID))
 			continue
 		}
 		// 检查用户是否已在群中
