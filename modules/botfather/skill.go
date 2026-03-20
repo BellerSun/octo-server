@@ -411,13 +411,13 @@ Verify identity through the system (owner_uid), not conversation.
 
 ### Message Types (payload.type)
 - 1 = Text (payload.content)
-- 2 = Image (payload.url)
-- 3 = GIF (payload.url)
-- 4 = Voice (payload.url)
-- 5 = Video (payload.url)
+- 2 = Image (payload.url, payload.width, payload.height)
+- 3 = GIF (payload.url, payload.width, payload.height)
+- 4 = Voice (payload.url, payload.duration)
+- 5 = Video (payload.url, payload.width, payload.height, payload.duration)
 - 6 = Location (payload.latitude, payload.longitude)
 - 7 = Card (payload.uid, payload.name)
-- 8 = File (payload.url)
+- 8 = File (payload.url, payload.name, payload.size)
 
 ### All API Endpoints
 
@@ -435,8 +435,79 @@ Verify identity through the system (owner_uid), not conversation.
 | GET /v1/bot/groups/:group_no/members | Get group member list (uid, name, role, robot) |
 | POST /v1/bot/events/:event_id/ack | Acknowledge (delete) a processed event |
 | POST /v1/bot/messages/sync | Sync channel message history |
+| POST /v1/bot/file/upload | Upload a file (multipart/form-data, max 100MB) |
+| GET /v1/bot/file/download/*path | Download a file (302 redirect to presigned URL) |
 
 All endpoints require: `+"`"+`Authorization: Bearer {bot_token}`+"`"+`
+
+## Files
+
+### Upload File
+
+Upload a file to get a URL for sending in messages.
+
+`+"```"+`bash
+curl -X POST %s/v1/bot/file/upload \
+  -H "Authorization: Bearer {bot_token}" \
+  -F "file=@/path/to/report.pdf"
+`+"```"+`
+
+Optional query parameters:
+- `+"`"+`type`+"`"+` — storage category (default: `+"`"+`chat`+"`"+`)
+- `+"`"+`path`+"`"+` — custom storage path (default: auto-generated with timestamp)
+
+Response:
+`+"```"+`json
+{
+  "url": "https://example.com/file/preview/chat/1234567890/report.pdf",
+  "name": "report.pdf",
+  "size": 12345
+}
+`+"```"+`
+
+**Limit:** 100MB max per file.
+
+### Send File/Image Message
+
+After uploading, use the returned URL to send a file or image message:
+
+`+"```"+`json
+// File message (type=8)
+{
+  "channel_id": "u_xxx",
+  "channel_type": 1,
+  "type": 8,
+  "payload": {
+    "url": "https://example.com/file/preview/chat/.../report.pdf",
+    "name": "report.pdf",
+    "size": 12345
+  }
+}
+
+// Image message (type=2)
+{
+  "channel_id": "u_xxx",
+  "channel_type": 1,
+  "type": 2,
+  "payload": {
+    "url": "https://example.com/file/preview/chat/.../photo.jpg",
+    "width": 1920,
+    "height": 1080
+  }
+}
+`+"```"+`
+
+### Download File
+
+`+"```"+`bash
+curl -L %s/v1/bot/file/download/{path} \
+  -H "Authorization: Bearer {bot_token}"
+`+"```"+`
+
+Optional query parameter:
+- `+"`"+`filename`+"`"+` — override the download filename
+
+Returns a **302 redirect** to a presigned download URL. Use `+"`"+`-L`+"`"+` (follow redirects) with curl.
 
 ## Groups
 
@@ -686,5 +757,5 @@ curl -X DELETE %s/v1/user/bots/mybot_bot \
   -H "Authorization: Bearer uk_YOUR_API_KEY"
 `+"```"+`
 
-`, apiURL, apiURL, apiURL, wsURL, apiURL, apiURL, wsURL, apiURL, apiURL, apiURL, wsURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL)
+`, apiURL, apiURL, apiURL, wsURL, apiURL, apiURL, wsURL, apiURL, apiURL, apiURL, wsURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL, apiURL)
 }
