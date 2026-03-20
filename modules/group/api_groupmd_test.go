@@ -90,7 +90,7 @@ func TestGroupMdUpdate_TooLarge(t *testing.T) {
 	_, s := setupGroupMdTest(t)
 
 	// Try to update with content exceeding max size
-	largeContent := strings.Repeat("x", groupMdMaxSize+1)
+	largeContent := strings.Repeat("x", GetGroupMdMaxSize()+1)
 	w := httptest.NewRecorder()
 	body := util.ToJson(map[string]interface{}{
 		"content": largeContent,

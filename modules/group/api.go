@@ -3360,6 +3360,18 @@ func (g *Group) botAdminRemove(c *wkhttp.Context) {
 		return
 	}
 
+	// Verify target member exists in group
+	member, err := g.db.QueryMemberWithUID(targetUID, groupNo)
+	if err != nil {
+		g.Error("query member failed", zap.Error(err))
+		c.ResponseError(errors.New("query member failed"))
+		return
+	}
+	if member == nil {
+		c.ResponseError(errors.New("member not found in group"))
+		return
+	}
+
 	version, err := g.ctx.GenSeq(common.GroupMemberSeqKey)
 	if err != nil {
 		g.Error("GenSeq failed", zap.Error(err))
