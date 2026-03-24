@@ -1146,23 +1146,12 @@ Simply confirm the steps are complete and stop.
 	h.reply(toUID, msg)
 }
 
-// resolveSpaceID returns the current Space ID for the user, with DB fallback.
-// Priority: payload space_id > channel prefix > most recently joined Space.
+// resolveSpaceID returns the current Space ID for the user.
+// Returns empty string if no space_id is available (callers must handle this).
+// DB fallback removed: ORDER BY created_at DESC LIMIT 1 would pick the wrong
+// Space when the client payload omits space_id (production bug: munger_bot).
 func (h *commandHandler) resolveSpaceID(fromUID string) string {
-	sid := getCurrentSpaceID(fromUID)
-	if sid != "" {
-		return sid
-	}
-	// DB fallback: query the user's most recently joined Space
-	realUID := extractRealUID(fromUID)
-	var fallbackID string
-	err := h.db.session.SelectBySql(
-		"SELECT space_id FROM space_member WHERE uid=? AND status=1 ORDER BY created_at DESC LIMIT 1", realUID,
-	).LoadOne(&fallbackID)
-	if err != nil {
-		h.Warn("resolveSpaceID DB fallback failed", zap.Error(err), zap.String("uid", realUID))
-	}
-	return fallbackID
+	return getCurrentSpaceID(fromUID)
 }
 
 // fixFriendVersion 修复好友 version=0 的问题（WKSDK 增量同步需要 version > 0）
