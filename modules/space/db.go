@@ -140,7 +140,7 @@ func (d *DB) queryMemberIncludeRemoved(spaceId string, uid string) (*MemberModel
 	return &m, err
 }
 
-func (d *DB) queryMembers(spaceId string, page uint64, limit uint64) ([]*MemberDetailModel, error) {
+func (d *DB) queryMembers(spaceId string, loginUID string, page uint64, limit uint64) ([]*MemberDetailModel, error) {
 	var models []*MemberDetailModel
 	_, err := d.session.SelectBySql(`
 		SELECT sm.*, IFNULL(u.name,'') as name,
@@ -148,10 +148,10 @@ func (d *DB) queryMembers(spaceId string, page uint64, limit uint64) ([]*MemberD
 		FROM space_member sm
 		LEFT JOIN user u ON u.uid=sm.uid
 		LEFT JOIN robot r ON r.robot_id=sm.uid
-		WHERE sm.space_id=? AND sm.status=1
+		WHERE sm.space_id=? AND sm.status=1 AND (r.robot_id IS NULL OR r.creator_uid = ?)
 		ORDER BY sm.role DESC, sm.created_at ASC
 		LIMIT ? OFFSET ?
-	`, spaceId, limit, (page-1)*limit).Load(&models)
+	`, spaceId, loginUID, limit, (page-1)*limit).Load(&models)
 	return models, err
 }
 
