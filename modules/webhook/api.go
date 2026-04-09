@@ -63,10 +63,10 @@ func New(ctx *config.Context) *Webhook {
 	// iOS APNs 推送：优先使用 p8 Token 认证，否则使用 p12 证书
 	p8Path, keyID, teamID := loadAPNsP8Config()
 	if p8Path != "" && keyID != "" && teamID != "" {
-		// 使用 p8 Token 认证
-		topic := apns.Topic
+		// 使用 p8 Token 认证，环境变量优先于 yaml 配置（覆盖 dmwork-lib 默认值）
+		topic := os.Getenv("DM_PUSH_APNS_TOPIC")
 		if topic == "" {
-			topic = os.Getenv("DM_PUSH_APNS_TOPIC")
+			topic = apns.Topic
 		}
 		dev := apns.Dev
 		if envDev := os.Getenv("DM_PUSH_APNS_DEV"); envDev != "" {
