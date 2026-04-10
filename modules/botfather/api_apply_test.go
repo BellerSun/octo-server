@@ -30,7 +30,7 @@ func setupTestBotFather(t *testing.T) (*server.Server, *BotFather) {
 	return s, bf
 }
 
-func createTestRobot(t *testing.T, bf *BotFather, robotID, creatorUID string, accessMode int) {
+func createTestRobot(t *testing.T, bf *BotFather, robotID, creatorUID string) {
 	_, err := bf.db.session.InsertInto("robot").Columns(
 		"app_id", "robot_id", "username", "token", "version", "status",
 		"creator_uid", "description", "bot_token", "im_token_cache", "bot_commands",
@@ -61,7 +61,7 @@ func TestRobotApply_RequireApproval(t *testing.T) {
 
 	createTestUser(t, bf, ownerUID, "Owner")
 	createTestUser(t, bf, applicantUID, "Applicant")
-	createTestRobot(t, bf, robotID, ownerUID, AccessModeRequireApproval)
+	createTestRobot(t, bf, robotID, ownerUID)
 
 	// Apply for robot access
 	req, _ := http.NewRequest("POST", "/v1/robot/apply", bytes.NewReader([]byte(util.ToJson(map[string]interface{}{
@@ -90,7 +90,7 @@ func TestRobotApply_AutoApprove(t *testing.T) {
 
 	createTestUser(t, bf, ownerUID, "Owner")
 	createTestUser(t, bf, applicantUID, "Applicant")
-	createTestRobot(t, bf, robotID, ownerUID, AccessModeAutoApprove)
+	createTestRobot(t, bf, robotID, ownerUID)
 
 	// Apply for robot access - should auto-approve
 	req, _ := http.NewRequest("POST", "/v1/robot/apply", bytes.NewReader([]byte(util.ToJson(map[string]interface{}{
@@ -118,7 +118,7 @@ func TestRobotApply_Forbidden(t *testing.T) {
 
 	createTestUser(t, bf, ownerUID, "Owner")
 	createTestUser(t, bf, applicantUID, "Applicant")
-	createTestRobot(t, bf, robotID, ownerUID, AccessModeForbidden)
+	createTestRobot(t, bf, robotID, ownerUID)
 
 	// Apply for robot access - should be rejected
 	req, _ := http.NewRequest("POST", "/v1/robot/apply", bytes.NewReader([]byte(util.ToJson(map[string]interface{}{
@@ -139,7 +139,7 @@ func TestRobotApply_OwnRobot(t *testing.T) {
 	robotID := "test_robot_004"
 
 	createTestUser(t, bf, ownerUID, "Owner")
-	createTestRobot(t, bf, robotID, ownerUID, AccessModeRequireApproval)
+	createTestRobot(t, bf, robotID, ownerUID)
 
 	// Apply for own robot - should fail
 	req, _ := http.NewRequest("POST", "/v1/robot/apply", bytes.NewReader([]byte(util.ToJson(map[string]interface{}{
@@ -178,7 +178,7 @@ func TestRobotApply_DuplicatePending(t *testing.T) {
 
 	createTestUser(t, bf, ownerUID, "Owner")
 	createTestUser(t, bf, applicantUID, "Applicant")
-	createTestRobot(t, bf, robotID, ownerUID, AccessModeRequireApproval)
+	createTestRobot(t, bf, robotID, ownerUID)
 
 	// First apply
 	req, _ := http.NewRequest("POST", "/v1/robot/apply", bytes.NewReader([]byte(util.ToJson(map[string]interface{}{
@@ -209,7 +209,7 @@ func TestRobotApplySure(t *testing.T) {
 
 	createTestUser(t, bf, ownerUID, "Owner")
 	createTestUser(t, bf, applicantUID, "Applicant")
-	createTestRobot(t, bf, robotID, ownerUID, AccessModeRequireApproval)
+	createTestRobot(t, bf, robotID, ownerUID)
 
 	// Insert pending apply
 	applyDB := newRobotApplyDB(bf.ctx)
@@ -253,7 +253,7 @@ func TestRobotApplyRefuse(t *testing.T) {
 
 	createTestUser(t, bf, ownerUID, "Owner")
 	createTestUser(t, bf, applicantUID, "Applicant")
-	createTestRobot(t, bf, robotID, ownerUID, AccessModeRequireApproval)
+	createTestRobot(t, bf, robotID, ownerUID)
 
 	// Insert pending apply
 	applyDB := newRobotApplyDB(bf.ctx)
@@ -293,7 +293,7 @@ func TestRobotApplies_List(t *testing.T) {
 	robotID := "test_robot_008"
 
 	createTestUser(t, bf, ownerUID, "Owner")
-	createTestRobot(t, bf, robotID, ownerUID, AccessModeRequireApproval)
+	createTestRobot(t, bf, robotID, ownerUID)
 
 	// Insert some pending applies
 	applyDB := newRobotApplyDB(bf.ctx)
@@ -337,7 +337,7 @@ func TestRobotApplySure_NotOwner(t *testing.T) {
 	createTestUser(t, bf, ownerUID, "Owner")
 	createTestUser(t, bf, applicantUID, "Applicant")
 	createTestUser(t, bf, notOwnerUID, "NotOwner")
-	createTestRobot(t, bf, robotID, ownerUID, AccessModeRequireApproval)
+	createTestRobot(t, bf, robotID, ownerUID)
 
 	// Insert pending apply
 	applyDB := newRobotApplyDB(bf.ctx)

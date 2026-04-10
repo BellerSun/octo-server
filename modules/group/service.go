@@ -763,7 +763,6 @@ func (s *Service) CreateGroup(req *CreateGroupServiceReq) (*CreateGroupServiceRe
 			return nil, errors.New("creator is not a member of this space")
 		}
 		validMembers := make([]string, 0, len(req.Members))
-		skippedMembers := make([]string, 0)
 		for _, uid := range req.Members {
 			ok, err := spacepkg.CheckMembership(s.ctx.DB(), req.SpaceID, uid)
 			if err != nil {
