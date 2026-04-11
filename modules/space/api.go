@@ -1310,7 +1310,8 @@ func (s *Space) joinApprovePage(c *wkhttp.Context) {
 		c.ResponseError(errors.New("页面加载失败"))
 		return
 	}
-	html := strings.Replace(string(htmlBytes), "{{API_BASE_URL}}", s.ctx.GetConfig().External.BaseURL, 1)
+	safeBaseURL := strconv.Quote(s.ctx.GetConfig().External.BaseURL)
+	html := strings.Replace(string(htmlBytes), `"{{API_BASE_URL}}"`, safeBaseURL, 1)
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
 }
 
@@ -1396,6 +1397,8 @@ func (s *Space) joinApproveSure(c *wkhttp.Context) {
 		c.ResponseError(errors.New("授权码无效或已过期"))
 		return
 	}
+	// 立即删除 auth_code（一次性消费，最小化并发窗口）
+	_ = s.ctx.GetRedisConn().Del(cacheKey)
 
 	var authMap map[string]interface{}
 	if err := util.ReadJsonByByte([]byte(authInfo), &authMap); err != nil {
@@ -1423,9 +1426,6 @@ func (s *Space) joinApproveSure(c *wkhttp.Context) {
 		c.ResponseError(errors.New("该申请已被处理"))
 		return
 	}
-
-	// 删除 auth_code（一次性）
-	_ = s.ctx.GetRedisConn().Del(cacheKey)
 
 	space, err := s.db.querySpaceByID(spaceId)
 	if err != nil || space == nil {
