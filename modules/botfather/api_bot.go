@@ -433,12 +433,18 @@ func (bf *BotFather) botGroupCreate(c *wkhttp.Context) {
 		c.ResponseError(errors.New("failed to query member info"))
 		return
 	}
-	var humanMembers []string
+	// 按原始 req.Members 顺序过滤，保留顺序
+	robotSet := make(map[string]bool)
 	for _, u := range memberUsers {
 		if u.Robot == 1 {
-			continue
+			robotSet[u.UID] = true
 		}
-		humanMembers = append(humanMembers, u.UID)
+	}
+	var humanMembers []string
+	for _, uid := range req.Members {
+		if !robotSet[uid] {
+			humanMembers = append(humanMembers, uid)
+		}
 	}
 	if len(humanMembers) == 0 {
 		c.ResponseError(errors.New("only human members can be added through bot API"))
@@ -450,9 +456,13 @@ func (bf *BotFather) botGroupCreate(c *wkhttp.Context) {
 		req.Creator = humanMembers[0]
 	} else {
 		// 显式传了 creator，校验不能是 bot
-		var creatorRobot int
-		bf.ctx.DB().SelectBySql("SELECT IFNULL(robot,0) FROM user WHERE uid=?", req.Creator).LoadOne(&creatorRobot)
-		if creatorRobot == 1 {
+		creatorUser, err := bf.userDB.QueryByUID(req.Creator)
+		if err != nil {
+			bf.Error("query creator info failed", zap.Error(err))
+			c.ResponseError(errors.New("failed to query creator info"))
+			return
+		}
+		if creatorUser != nil && creatorUser.Robot == 1 {
 			c.ResponseError(errors.New("creator cannot be a bot"))
 			return
 		}
