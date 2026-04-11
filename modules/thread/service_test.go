@@ -209,6 +209,98 @@ func TestThreadStatusConstants(t *testing.T) {
 	assert.Equal(t, 3, ThreadStatusDeleted)
 }
 
+// ==================== DB 层 QueryThreadMetaByShortIDs 测试 ====================
+
+func TestQueryThreadMetaByShortIDs(t *testing.T) {
+	_, ctx := testutil.NewTestServer()
+	err := testutil.CleanAllTables(ctx)
+	assert.NoError(t, err)
+
+	db := NewDB(ctx)
+
+	// 插入三个 thread：两个有 source_message_id，一个没有
+	shortID1 := fmt.Sprintf("%d", ctx.UserIDGen.Generate().Int64())
+	shortID2 := fmt.Sprintf("%d", ctx.UserIDGen.Generate().Int64())
+	shortID3 := fmt.Sprintf("%d", ctx.UserIDGen.Generate().Int64())
+
+	srcMsgID1 := int64(100001)
+	srcMsgID2 := int64(100002)
+
+	err = db.Insert(&Model{
+		ShortID:         shortID1,
+		GroupNo:         "00000000000000000000000000000001",
+		Name:            "有源消息1",
+		CreatorUID:      "u1",
+		SourceMessageID: &srcMsgID1,
+		Status:          ThreadStatusActive,
+		Version:         1,
+	})
+	assert.NoError(t, err)
+
+	err = db.Insert(&Model{
+		ShortID:         shortID2,
+		GroupNo:         "00000000000000000000000000000001",
+		Name:            "有源消息2",
+		CreatorUID:      "u1",
+		SourceMessageID: &srcMsgID2,
+		Status:          ThreadStatusActive,
+		Version:         1,
+	})
+	assert.NoError(t, err)
+
+	err = db.Insert(&Model{
+		ShortID:    shortID3,
+		GroupNo:    "00000000000000000000000000000001",
+		Name:       "无源消息",
+		CreatorUID: "u1",
+		Status:     ThreadStatusActive,
+		Version:    1,
+	})
+	assert.NoError(t, err)
+
+	// 模拟消息统计更新
+	err = db.UpdateMessageStats(shortID1, "hello", "u1")
+	assert.NoError(t, err)
+	err = db.UpdateMessageStats(shortID1, "world", "u2")
+	assert.NoError(t, err)
+
+	// 批量查询元数据
+	result, err := db.QueryThreadMetaByShortIDs([]string{shortID1, shortID2, shortID3})
+	assert.NoError(t, err)
+	assert.Len(t, result, 3)
+
+	// shortID1: 有 source_message_id，message_count=2
+	assert.NotNil(t, result[shortID1].SourceMessageID)
+	assert.Equal(t, srcMsgID1, *result[shortID1].SourceMessageID)
+	assert.Equal(t, int64(2), result[shortID1].MessageCount)
+
+	// shortID2: 有 source_message_id，message_count=0
+	assert.NotNil(t, result[shortID2].SourceMessageID)
+	assert.Equal(t, srcMsgID2, *result[shortID2].SourceMessageID)
+	assert.Equal(t, int64(0), result[shortID2].MessageCount)
+
+	// shortID3: 无 source_message_id，message_count=0
+	assert.Nil(t, result[shortID3].SourceMessageID)
+	assert.Equal(t, int64(0), result[shortID3].MessageCount)
+
+	// 空列表不报错
+	emptyResult, err := db.QueryThreadMetaByShortIDs([]string{})
+	assert.NoError(t, err)
+	assert.Len(t, emptyResult, 0)
+
+	// 不存在的 shortID 不在结果中
+	unknownResult, err := db.QueryThreadMetaByShortIDs([]string{"999999999999999"})
+	assert.NoError(t, err)
+	assert.Len(t, unknownResult, 0)
+
+	// 向后兼容：QuerySourceMessageIDsByShortIDs 仍然工作
+	srcResult, err := db.QuerySourceMessageIDsByShortIDs([]string{shortID1, shortID3})
+	assert.NoError(t, err)
+	assert.Len(t, srcResult, 2)
+	assert.Equal(t, srcMsgID1, *srcResult[shortID1])
+	assert.Nil(t, srcResult[shortID3])
+}
+
 // ==================== DB 层 UpdateMessageStats 测试 ====================
 
 func TestUpdateMessageStats(t *testing.T) {

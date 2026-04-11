@@ -14,6 +14,7 @@ import (
 	"github.com/Mininglamp-OSS/octo-server/modules/channel"
 	chservice "github.com/Mininglamp-OSS/octo-server/modules/channel/service"
 	"github.com/Mininglamp-OSS/octo-server/modules/group"
+	"github.com/Mininglamp-OSS/octo-server/modules/thread"
 	"github.com/Mininglamp-OSS/octo-server/modules/user"
 	spacepkg "github.com/Mininglamp-OSS/octo-server/pkg/space"
 	"github.com/Mininglamp-OSS/octo-lib/common"
@@ -45,6 +46,7 @@ type Conversation struct {
 	service             IService
 	channelService      chservice.IService
 	conversationExtraDB *conversationExtraDB
+	threadDB            *thread.DB
 
 	syncConversationResultCacheMap  map[string][]string
 	syncConversationVersionMap      map[string]int64
@@ -66,6 +68,7 @@ func NewConversation(ctx *config.Context) *Conversation {
 		userLastOffsetDB:               newUserLastOffsetDB(ctx),
 		groupCategoryDB:                newGroupCategoryDB(ctx),
 		conversationExtraDB:            newConversationExtraDB(ctx),
+		threadDB:                       thread.NewDB(ctx),
 		userService:                    user.NewService(ctx),
 		groupService:                   group.NewService(ctx),
 		channelService:                 channel.NewService(ctx),
@@ -601,6 +604,10 @@ func (co *Conversation) syncUserConversation(c *wkhttp.Context) {
 		co.syncConversationVersionMap[userKey] = lastVersion
 	}
 	co.syncConversationResultCacheLock.Unlock()
+
+	// ---------- 子区 source_message_id ----------
+	co.fillThreadMeta(syncUserConversationResps)
+
 	// 查询通话中的频道
 	// 加入的群聊
 	joinedGroups, err := co.groupService.GetGroupsWithMemberUID(loginUID)
@@ -1163,6 +1170,7 @@ type SyncUserConversationResp struct {
 	ChannelID        string                 `json:"channel_id"`                   // 频道ID
 	ChannelType      uint8                  `json:"channel_type"`                 // 频道类型
 	SpaceID          string                 `json:"space_id,omitempty"`           // Space ID
+	Thread           *threadMetaResp        `json:"thread,omitempty"`             // 子区元数据（仅 thread 频道）
 	CategoryID       *string                `json:"category_id,omitempty"`        // 用户自定义分类ID（仅群组）
 	CategorySort     int                    `json:"category_sort,omitempty"`      // 分类内排序（仅群组）
 	Unread           int                    `json:"unread,omitempty"`             // 未读消息
@@ -1268,5 +1276,54 @@ func newSyncUserConversationResp(resp *config.SyncUserConversationResp, extra *c
 		Stick:           stick,
 		Recents:         recents,
 		Extra:           extra,
+	}
+}
+
+// threadMetaResp 子区元数据（仅 thread 频道返回）
+type threadMetaResp struct {
+	SourceMessageID *int64 `json:"source_message_id,omitempty"` // 源消息ID
+	MessageCount    int64  `json:"message_count"`               // 消息数
+}
+
+// fillThreadMeta 批量填充子区会话的元数据
+func (co *Conversation) fillThreadMeta(resps []*SyncUserConversationResp) {
+	// 收集所有 thread 频道的 shortID
+	threadShortIDs := make([]string, 0)
+	for _, resp := range resps {
+		if resp.ChannelType != common.ChannelTypeCommunityTopic.Uint8() {
+			continue
+		}
+		_, shortID, err := thread.ParseChannelID(resp.ChannelID)
+		if err != nil {
+			continue
+		}
+		threadShortIDs = append(threadShortIDs, shortID)
+	}
+	if len(threadShortIDs) == 0 {
+		return
+	}
+
+	// 批量查询
+	threadMetaMap, err := co.threadDB.QueryThreadMetaByShortIDs(threadShortIDs)
+	if err != nil {
+		co.Error("查询子区元数据失败", zap.Error(err))
+		return
+	}
+
+	// 填充
+	for _, resp := range resps {
+		if resp.ChannelType != common.ChannelTypeCommunityTopic.Uint8() {
+			continue
+		}
+		_, shortID, err := thread.ParseChannelID(resp.ChannelID)
+		if err != nil {
+			continue
+		}
+		if meta, ok := threadMetaMap[shortID]; ok {
+			resp.Thread = &threadMetaResp{
+				SourceMessageID: meta.SourceMessageID,
+				MessageCount:    meta.MessageCount,
+			}
+		}
 	}
 }

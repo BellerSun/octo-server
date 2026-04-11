@@ -185,6 +185,7 @@ func newChannelRespWithThread(thread *Model) *model.ChannelResp {
 	extraMap["group_no"] = thread.GroupNo
 	extraMap["creator_uid"] = thread.CreatorUID
 	extraMap["status"] = thread.Status
+	extraMap["message_count"] = thread.MessageCount
 	if thread.SourceMessageID != nil {
 		extraMap["source_message_id"] = *thread.SourceMessageID
 	}

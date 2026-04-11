@@ -87,6 +87,46 @@ func (d *DB) QueryByGroupNo(groupNo string) ([]*Model, error) {
 	return models, err
 }
 
+// ThreadMetaRow 子区元数据（用于会话列表批量查询）
+type ThreadMetaRow struct {
+	ShortID         string `json:"short_id"`
+	SourceMessageID *int64 `json:"source_message_id"`
+	MessageCount    int64  `json:"message_count"`
+}
+
+// QueryThreadMetaByShortIDs 批量查询子区元数据（source_message_id, message_count）
+func (d *DB) QueryThreadMetaByShortIDs(shortIDs []string) (map[string]*ThreadMetaRow, error) {
+	result := make(map[string]*ThreadMetaRow)
+	if len(shortIDs) == 0 {
+		return result, nil
+	}
+	var rows []*ThreadMetaRow
+	_, err := d.session.Select("short_id", "source_message_id", "message_count").From("thread").
+		Where("short_id IN ?", shortIDs).
+		Load(&rows)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		result[row.ShortID] = row
+	}
+	return result, nil
+}
+
+// QuerySourceMessageIDsByShortIDs 批量查询子区的 source_message_id
+// 返回 map[shortID]*int64，nil 值表示无源消息
+func (d *DB) QuerySourceMessageIDsByShortIDs(shortIDs []string) (map[string]*int64, error) {
+	meta, err := d.QueryThreadMetaByShortIDs(shortIDs)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]*int64, len(meta))
+	for shortID, row := range meta {
+		result[shortID] = row.SourceMessageID
+	}
+	return result, nil
+}
+
 // QueryByGroupNoWithStatus 查询群下指定状态的子区（默认限制 100 条）
 func (d *DB) QueryByGroupNoWithStatus(groupNo string, status int) ([]*Model, error) {
 	var models []*Model

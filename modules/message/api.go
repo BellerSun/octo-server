@@ -18,6 +18,7 @@ import (
 	commonapi "github.com/Mininglamp-OSS/octo-server/modules/common"
 	"github.com/Mininglamp-OSS/octo-server/modules/file"
 	"github.com/Mininglamp-OSS/octo-server/modules/group"
+	"github.com/Mininglamp-OSS/octo-server/modules/thread"
 	"github.com/Mininglamp-OSS/octo-server/modules/user"
 	spacepkg "github.com/Mininglamp-OSS/octo-server/pkg/space"
 	"github.com/Mininglamp-OSS/octo-lib/common"
@@ -53,6 +54,7 @@ type Message struct {
 	commonService       commonapi.IService
 	fileService         file.IService
 	channelService      chservice.IService
+	threadDB            *thread.DB
 	mutex               sync.Mutex
 	stopChan            chan struct{}
 }
@@ -80,6 +82,7 @@ func New(ctx *config.Context) *Message {
 		commonService:       commonapi.NewService(ctx),
 		fileService:         file.NewService(ctx),
 		channelService:      channel.NewService(ctx),
+		threadDB:            thread.NewDB(ctx),
 		stopChan:            make(chan struct{}),
 	}
 	m.ctx.AddEventListener(event.GroupMemberAdd, m.handleGroupMemberAddEvent)
@@ -737,7 +740,14 @@ func (m *Message) syncChannelMessage(c *wkhttp.Context) {
 	if len(channelSettings) > 0 && channelSettings[0].OffsetMessageSeq > 0 {
 		channelOffsetMessageSeq = channelSettings[0].OffsetMessageSeq
 	}
-	c.Response(newSyncChannelMessageResp(resp, c.GetLoginUID(), req.DeviceUUID, req.ChannelID, req.ChannelType, m.messageExtraDB, m.messageUserExtraDB, m.messageReactionDB, m.channelOffsetDB, m.deviceOffsetDB, channelOffsetMessageSeq))
+	syncResp := newSyncChannelMessageResp(resp, c.GetLoginUID(), req.DeviceUUID, req.ChannelID, req.ChannelType, m.messageExtraDB, m.messageUserExtraDB, m.messageReactionDB, m.channelOffsetDB, m.deviceOffsetDB, channelOffsetMessageSeq)
+
+	// 群消息中的 ThreadCreated 消息：用实时数据覆盖 payload 中的快照字段
+	if req.ChannelType == common.ChannelTypeGroup.Uint8() {
+		m.enrichThreadCreatedMessages(syncResp.Messages)
+	}
+
+	c.Response(syncResp)
 }
 
 // 输入中
@@ -2433,4 +2443,52 @@ type ProhibitWordResp struct {
 	IsDeleted int    `json:"is_deleted"` // 是否删除
 	Version   int64  `json:"version"`    // 版本
 	CreatedAt string `json:"created_at"` // 时间
+}
+
+// enrichThreadCreatedMessages 遍历群消息，对 ThreadCreated 类型的消息 payload 注入实时 thread 元数据
+func (m *Message) enrichThreadCreatedMessages(messages []*MsgSyncResp) {
+	// 收集所有 ThreadCreated 消息的 shortID
+	shortIDs := make([]string, 0)
+	for _, msg := range messages {
+		if msg.Payload == nil {
+			continue
+		}
+		msgType, _ := msg.Payload["type"].(float64)
+		if int(msgType) != thread.ContentTypeThreadCreated {
+			continue
+		}
+		shortID, _ := msg.Payload["short_id"].(string)
+		if shortID == "" {
+			continue
+		}
+		shortIDs = append(shortIDs, shortID)
+	}
+	if len(shortIDs) == 0 {
+		return
+	}
+
+	// 批量查询
+	metaMap, err := m.threadDB.QueryThreadMetaByShortIDs(shortIDs)
+	if err != nil {
+		m.Error("查询子区元数据失败", zap.Error(err))
+		return
+	}
+
+	// 注入实时数据到 payload
+	for _, msg := range messages {
+		if msg.Payload == nil {
+			continue
+		}
+		msgType, _ := msg.Payload["type"].(float64)
+		if int(msgType) != thread.ContentTypeThreadCreated {
+			continue
+		}
+		shortID, _ := msg.Payload["short_id"].(string)
+		if meta, ok := metaMap[shortID]; ok {
+			msg.Payload["message_count"] = meta.MessageCount
+			if meta.SourceMessageID != nil {
+				msg.Payload["source_message_id"] = *meta.SourceMessageID
+			}
+		}
+	}
 }
