@@ -1473,7 +1473,7 @@ func (s *Space) joinApproveSure(c *wkhttp.Context) {
 			return
 		}
 		if affected == 0 {
-			c.ResponseError(errors.New("该申请已被处理"))
+			c.ResponseOK()
 			return
 		}
 
