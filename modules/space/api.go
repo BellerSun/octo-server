@@ -1367,21 +1367,30 @@ func (s *Space) joinApproveDetail(c *wkhttp.Context) {
 	}
 
 	applicantName := apply.UID
-	var userInfo struct {
+	var applicantEmail string
+	var reviewerName string
+
+	uids := []interface{}{apply.UID}
+	if apply.ReviewerUID != "" && apply.ReviewerUID != apply.UID {
+		uids = append(uids, apply.ReviewerUID)
+	}
+	var userRows []struct {
+		UID   string
 		Name  string
 		Email string
 	}
-	cnt, _ := s.ctx.DB().SelectBySql("SELECT IFNULL(name,'') as name, IFNULL(email,'') as email FROM `user` WHERE uid=?", apply.UID).Load(&userInfo)
-	if cnt > 0 && userInfo.Name != "" {
-		applicantName = userInfo.Name
-	}
-
-	var reviewerName string
-	if apply.ReviewerUID != "" {
-		var rInfo struct{ Name string }
-		cnt, _ := s.ctx.DB().SelectBySql("SELECT IFNULL(name,'') as name FROM `user` WHERE uid=?", apply.ReviewerUID).Load(&rInfo)
-		if cnt > 0 && rInfo.Name != "" {
-			reviewerName = rInfo.Name
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(uids)), ",")
+	s.ctx.DB().SelectBySql(
+		fmt.Sprintf("SELECT uid, IFNULL(name,'') as name, IFNULL(email,'') as email FROM `user` WHERE uid IN (%s)", placeholders),
+		uids...,
+	).Load(&userRows)
+	for _, u := range userRows {
+		if u.UID == apply.UID && u.Name != "" {
+			applicantName = u.Name
+			applicantEmail = u.Email
+		}
+		if u.UID == apply.ReviewerUID && u.Name != "" {
+			reviewerName = u.Name
 		}
 	}
 
@@ -1391,7 +1400,7 @@ func (s *Space) joinApproveDetail(c *wkhttp.Context) {
 		"space_name":      spaceName,
 		"uid":             apply.UID,
 		"applicant_name":  applicantName,
-		"applicant_email": userInfo.Email,
+		"applicant_email": applicantEmail,
 		"status":          apply.Status,
 		"reviewer_uid":    apply.ReviewerUID,
 		"reviewer_name":   reviewerName,
@@ -1442,6 +1451,10 @@ func (s *Space) joinApproveSure(c *wkhttp.Context) {
 		c.ResponseError(errors.New("申请记录不存在"))
 		return
 	}
+	if apply.SpaceId != spaceId {
+		c.ResponseError(errors.New("申请记录不属于当前空间"))
+		return
+	}
 	if apply.Status != 0 {
 		c.ResponseError(errors.New("该申请已被处理"))
 		return
@@ -1460,7 +1473,7 @@ func (s *Space) joinApproveSure(c *wkhttp.Context) {
 			return
 		}
 		if affected == 0 {
-			c.ResponseOK()
+			c.ResponseError(errors.New("该申请已被处理"))
 			return
 		}
 
