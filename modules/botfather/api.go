@@ -113,8 +113,7 @@ func (bf *BotFather) Route(r *wkhttp.WKHttp) {
 		botAPI.POST("/readReceipt", bf.readReceipt)
 		botAPI.POST("/events", bf.getEvents)
 		botAPI.POST("/events/:event_id/ack", bf.eventAck)
-		botAPI.POST("/stream/start", bf.streamStart)
-		botAPI.POST("/stream/end", bf.streamEnd)
+		// stream/start and stream/end removed — DMWork does not support streaming
 		botAPI.POST("/heartbeat", bf.heartbeat)
 		botAPI.POST("/messages/sync", bf.syncMessages)
 		botAPI.GET("/groups", bf.getGroups)
@@ -1080,58 +1079,6 @@ func (bf *BotFather) eventAck(c *wkhttp.Context) {
 	err = bf.ctx.GetRedisConn().ZRemRangeByScore(key, fmt.Sprintf("%d", eventID), fmt.Sprintf("%d", eventID))
 	if err != nil {
 		c.ResponseError(err)
-		return
-	}
-	c.ResponseOK()
-}
-
-// ========== Bot Stream API ==========
-
-func (bf *BotFather) streamStart(c *wkhttp.Context) {
-	var req BotStreamStartReq
-	if err := c.BindJSON(&req); err != nil {
-		c.ResponseError(errors.New("数据格式有误"))
-		return
-	}
-
-	robotID := getRobotIDFromContext(c)
-	channelID := bf.resolveSpaceChannelID(robotID, req.ChannelID, req.ChannelType)
-	streamNo, err := bf.ctx.IMStreamStart(config.MessageStreamStartReq{
-		Header: config.MsgHeader{
-			RedDot: 1,
-		},
-		FromUID:     robotID,
-		ChannelID:   channelID,
-		ChannelType: req.ChannelType,
-		Payload:     req.Payload,
-	})
-	if err != nil {
-		bf.Error("stream start失败", zap.Error(err))
-		c.ResponseError(errors.New("stream start失败"))
-		return
-	}
-	c.Response(gin.H{
-		"stream_no": streamNo,
-	})
-}
-
-func (bf *BotFather) streamEnd(c *wkhttp.Context) {
-	var req BotStreamEndReq
-	if err := c.BindJSON(&req); err != nil {
-		c.ResponseError(errors.New("数据格式有误"))
-		return
-	}
-
-	robotID := getRobotIDFromContext(c)
-	channelID := bf.resolveSpaceChannelID(robotID, req.ChannelID, req.ChannelType)
-	err := bf.ctx.IMStreamEnd(config.MessageStreamEndReq{
-		StreamNo:    req.StreamNo,
-		ChannelID:   channelID,
-		ChannelType: req.ChannelType,
-	})
-	if err != nil {
-		bf.Error("stream end失败", zap.Error(err))
-		c.ResponseError(errors.New("stream end失败"))
 		return
 	}
 	c.ResponseOK()

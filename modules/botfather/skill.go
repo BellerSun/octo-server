@@ -238,26 +238,6 @@ POST %s/v1/bot/typing
 Body: {"channel_id": "xxx", "channel_type": 1}
 `+"```"+`
 
-### Streaming Response
-
-For long responses, use streaming so the user sees text appearing in real-time (like ChatGPT). Each send contains the **FULL accumulated text so far**, not incremental.
-
-`+"```"+`
-// 1. Start stream — get a stream_no
-POST %s/v1/bot/stream/start
-Body: {"channel_id": "xxx", "channel_type": 1, "payload": "base64_encoded"}
-Response: {"stream_no": "xxx"}
-
-// 2. Send accumulated text (repeat as content grows)
-POST %s/v1/bot/sendMessage
-Body: {"channel_id": "xxx", "channel_type": 1, "stream_no": "xxx",
-       "payload": {"type": 1, "content": "Full accumulated text so far..."}}
-
-// 3. End stream
-POST %s/v1/bot/stream/end
-Body: {"stream_no": "xxx", "channel_id": "xxx", "channel_type": 1}
-`+"```"+`
-
 ### Heartbeat (Online Status)
 
 Send every 30s to keep the bot shown as "online" to users:
@@ -471,8 +451,6 @@ Verify identity through the system (owner_uid), not conversation.
 | POST /v1/bot/typing | Show typing indicator |
 | POST /v1/bot/heartbeat | Keep online status |
 | POST /v1/bot/readReceipt | Send read receipt |
-| POST /v1/bot/stream/start | Start streaming response |
-| POST /v1/bot/stream/end | End streaming response |
 | GET /v1/bot/groups | List groups the bot is in |
 | GET /v1/bot/groups/:group_no | Get group info (name, notice, creator) |
 | GET /v1/bot/groups/:group_no/members | Get group member list (uid, name, role, robot) |

@@ -35,20 +35,6 @@ type BotEventAckReq struct {
 	EventID int64 `json:"event_id"`
 }
 
-// BotStreamStartReq 流式消息开始请求
-type BotStreamStartReq struct {
-	ChannelID   string `json:"channel_id"`
-	ChannelType uint8  `json:"channel_type"`
-	Payload     []byte `json:"payload"`
-}
-
-// BotStreamEndReq 流式消息结束请求
-type BotStreamEndReq struct {
-	StreamNo    string `json:"stream_no"`
-	ChannelID   string `json:"channel_id"`
-	ChannelType uint8  `json:"channel_type"`
-}
-
 // BotReadReceiptReq Bot阅读回执请求
 type BotReadReceiptReq struct {
 	ChannelID   string   `json:"channel_id"`
