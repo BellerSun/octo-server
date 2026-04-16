@@ -450,6 +450,7 @@ Verify identity through the system (owner_uid), not conversation.
 ### Channel Types
 - 1 = Direct Message (DM)
 - 2 = Group Chat
+- 5 = Thread / Sub-topic (channel_id format: {group_no}____{short_id})
 
 ### Message Types (payload.type)
 - 1 = Text (payload.content)
@@ -587,31 +588,30 @@ cos.uploadFile({
 
 ### Send File/Image Message
 
-After uploading, use the returned URL to send a file or image message:
+After uploading, use the returned URL to send a file or image message.
+
+**Important:** When replying to a thread (sub-topic), use `+"`"+`channel_type=5`+"`"+` and keep the full `+"`"+`channel_id`+"`"+` (`+"`"+`{group_no}____{short_id}`+"`"+`). Do NOT split it. Always use the `+"`"+`channel_id`+"`"+` and `+"`"+`channel_type`+"`"+` from the received event as-is.
 
 `+"```"+`json
-// File message (type=8)
+// File message to DM (type=8, channel_type=1)
 {
   "channel_id": "u_xxx",
   "channel_type": 1,
-  "type": 8,
-  "payload": {
-    "url": "https://example.com/file/preview/chat/.../report.pdf",
-    "name": "report.pdf",
-    "size": 12345
-  }
+  "payload": {"type": 8, "url": "https://..../report.pdf", "name": "report.pdf", "size": 12345}
 }
 
-// Image message (type=2)
+// Image message to group (type=2, channel_type=2)
 {
-  "channel_id": "u_xxx",
-  "channel_type": 1,
-  "type": 2,
-  "payload": {
-    "url": "https://example.com/file/preview/chat/.../photo.jpg",
-    "width": 1920,
-    "height": 1080
-  }
+  "channel_id": "group_123",
+  "channel_type": 2,
+  "payload": {"type": 2, "url": "https://..../photo.jpg", "width": 1920, "height": 1080}
+}
+
+// File message to thread (type=8, channel_type=5)
+{
+  "channel_id": "group_123____2044043250838278144",
+  "channel_type": 5,
+  "payload": {"type": 8, "url": "https://..../data.csv", "name": "data.csv", "size": 5678}
 }
 `+"```"+`
 
