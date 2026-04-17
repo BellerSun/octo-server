@@ -381,6 +381,17 @@ func (f *File) getUploadCredentials(c *wkhttp.Context) {
 		return
 	}
 
+	ext := ""
+	if filename != "" {
+		ext = strings.ToLower(filepath.Ext(filepath.Base(filename)))
+	} else if uploadPath != "" {
+		ext = strings.ToLower(filepath.Ext(uploadPath))
+	}
+	if ext != "" && (IsBlockedExtension(ext) || !IsAllowedExtension(ext)) {
+		c.ResponseError(errors.New("不支持的文件类型"))
+		return
+	}
+
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
