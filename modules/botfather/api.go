@@ -27,6 +27,7 @@ import (
 	"github.com/Mininglamp-OSS/octo-lib/config"
 	"github.com/Mininglamp-OSS/octo-lib/pkg/log"
 	"github.com/Mininglamp-OSS/octo-lib/pkg/util"
+	pkgutil "github.com/Mininglamp-OSS/octo-server/pkg/util"
 	"github.com/Mininglamp-OSS/octo-lib/pkg/wkhttp"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis"
@@ -1156,7 +1157,23 @@ func (bf *BotFather) botProxyFile(c *wkhttp.Context) {
 	if filename == "" {
 		parts := strings.Split(ph, "/")
 		if len(parts) > 0 {
-			filename = parts[len(parts)-1]
+			lastPart := parts[len(parts)-1]
+			// Strip UUID prefix (32 hex chars + underscore) for legacy paths
+			if idx := strings.Index(lastPart, "_"); idx == 32 && pkgutil.IsHexString(lastPart[:32]) {
+				unescaped, err := url.PathUnescape(lastPart[idx+1:])
+				if err == nil {
+					filename = unescaped
+				} else {
+					filename = lastPart[idx+1:]
+				}
+			} else {
+				unescaped, err := url.PathUnescape(lastPart)
+				if err == nil {
+					filename = unescaped
+				} else {
+					filename = lastPart
+				}
+			}
 		}
 	}
 
@@ -1241,7 +1258,23 @@ func (bf *BotFather) botFileDownload(c *wkhttp.Context) {
 	if filename == "" {
 		parts := strings.Split(ph, "/")
 		if len(parts) > 0 {
-			filename = parts[len(parts)-1]
+			lastPart := parts[len(parts)-1]
+			// Strip UUID prefix (32 hex chars + underscore) for legacy paths
+			if idx := strings.Index(lastPart, "_"); idx == 32 && pkgutil.IsHexString(lastPart[:32]) {
+				unescaped, err := url.PathUnescape(lastPart[idx+1:])
+				if err == nil {
+					filename = unescaped
+				} else {
+					filename = lastPart[idx+1:]
+				}
+			} else {
+				unescaped, err := url.PathUnescape(lastPart)
+				if err == nil {
+					filename = unescaped
+				} else {
+					filename = lastPart
+				}
+			}
 		}
 	}
 
@@ -1348,7 +1381,7 @@ func (bf *BotFather) botUploadCredentials(c *wkhttp.Context) {
 	}
 
 	prefix := strings.TrimSpace(cosConfig.Prefix)
-	objectPath := fmt.Sprintf("chat/%d/%s_%s", time.Now().Unix(), util.GenerUUID(), url.PathEscape(filename))
+	objectPath := fmt.Sprintf("chat/%d/%s/%s", time.Now().Unix(), util.GenerUUID(), url.PathEscape(filename))
 	var key string
 	if prefix != "" {
 		key = path.Join(prefix, objectPath)
@@ -1420,7 +1453,7 @@ func (bf *BotFather) botUploadPresigned(c *wkhttp.Context) {
 		return
 	}
 
-	objectPath := fmt.Sprintf("chat/%d/%s_%s", time.Now().Unix(), util.GenerUUID(), url.PathEscape(filename))
+	objectPath := fmt.Sprintf("chat/%d/%s/%s", time.Now().Unix(), util.GenerUUID(), url.PathEscape(filename))
 	contentType := mime.TypeByExtension(ext)
 	if contentType == "" {
 		contentType = "application/octet-stream"
