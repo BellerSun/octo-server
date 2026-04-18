@@ -168,6 +168,8 @@ func (h *commandHandler) handleCommand(fromUID string, cmd string) {
 		h.handleRevoke(fromUID)
 	case CmdQuickstart:
 		h.handleQuickstart(fromUID)
+	case CmdInstall:
+		h.handleInstall(fromUID)
 	case CmdApprove:
 		h.handleApprove(fromUID, strings.TrimPrefix(cmd, command+" "))
 	case CmdReject:
@@ -488,10 +490,14 @@ func (h *commandHandler) handleQuickstart(fromUID string) {
 	}
 
 	apiKeyFormatted := "`" + apiKey + "`"
-	h.reply(fromUID, fmt.Sprintf("🚀 **Quickstart**\n\n📋 把下面内容发给你当前正在聊天的 OpenClaw 模型：\n\n---\n\n[DMWORK QUICKSTART]\n\nUser API Key: %s  \nAPI Server: %s\n\n按 %s/v1/bot/setup-quickstart.md 操作\n\n---\n\n💡 User API Key 可反复使用，用于管理你的所有 Bot%s  \n🔑 你的 API Key: %s",
+	h.reply(fromUID, fmt.Sprintf("🚀 **Quickstart**\n\n📋 把下面命令发给 OpenClaw 模型执行（需先执行 /install 安装插件）：\n\n```\nnpx -y openclaw-channel-dmwork quickstart --api-key %s --api-url %s\n```\n\n💡 User API Key 可反复使用，用于管理你的所有 Bot%s  \n🔑 你的 API Key: %s",
 		apiKey, apiURL,
-		apiURL,
 		spaceInfo, apiKeyFormatted))
+}
+
+func (h *commandHandler) handleInstall(fromUID string) {
+	h.sm.Clear(fromUID, h.spaceID(fromUID))
+	h.reply(fromUID, "📦 **安装/更新 DMWork 插件**\n\n把下面命令发给 OpenClaw 模型执行：\n\n```\nnpx -y openclaw-channel-dmwork install\n```\n\n安装完成后，使用 /newbot 创建单个 bot 或 /quickstart 批量创建。")
 }
 
 func (h *commandHandler) handleHelp(fromUID string) {
@@ -500,6 +506,7 @@ func (h *commandHandler) handleHelp(fromUID string) {
 
 **可用命令：**
 
+- /install — 安装/更新 DMWork 插件
 - /quickstart — AI Agent 快速入门（推荐）
 - /newbot — 创建新机器人
 - /mybots — 查看我的机器人
@@ -1087,10 +1094,9 @@ func (h *commandHandler) sendCreatedPrompt(toUID string, name string, bot *robot
 		apiURL = fmt.Sprintf("http://%s:8090", cfg.External.IP)
 	}
 
-	msg := fmt.Sprintf("✅ 机器人「**%s**」创建成功！\n\n**Bot Name:** %s  \n**Bot Token:** %s  \n**API Server:** %s\n\n📋 把下面内容发给你当前正在聊天的 OpenClaw 模型：\n\n---\n\n[DMWORK NEWBOT SETUP]\n\nBot Name: %s  \nBot Token: %s  \nAPI Server: %s  \nAccount ID: %s\n\n按 %s/v1/bot/setup-newbot.md 操作\n\n---",
+	msg := fmt.Sprintf("✅ 机器人「**%s**」创建成功！\n\n**Bot Name:** %s  \n**Bot Token:** %s  \n**API Server:** %s\n\n📋 把下面命令发给 OpenClaw 模型执行（需先执行 /install 安装插件）：\n\n```\nnpx -y openclaw-channel-dmwork bind --bot-token %s --api-url %s --account-id %s --agent <你的agent标识>\n```\n\nagent 标识可通过 /status 查看",
 		name, name, bot.BotToken, apiURL,
-		name, bot.BotToken, apiURL, bot.RobotID,
-		apiURL)
+		bot.BotToken, apiURL, bot.RobotID)
 
 	h.reply(toUID, msg)
 }
