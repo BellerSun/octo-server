@@ -8,6 +8,7 @@ import (
 
 	"github.com/Mininglamp-OSS/octo-server/modules/group"
 	"github.com/Mininglamp-OSS/octo-server/modules/message"
+	"github.com/Mininglamp-OSS/octo-server/modules/thread"
 	"github.com/Mininglamp-OSS/octo-server/modules/user"
 	"github.com/Mininglamp-OSS/octo-server/pkg/log"
 	spacepkg "github.com/Mininglamp-OSS/octo-server/pkg/space"
@@ -182,22 +183,7 @@ func (s *Search) global(c *wkhttp.Context) {
 			realMessages = append(realMessages, m)
 		}
 	}
-	groupIds := make([]string, 0)
-	uids := make([]string, 0)
-	msgFromUids := make([]string, 0)
-
-	if len(realMessages) > 0 {
-		for _, m := range realMessages {
-			if m.ChannelType == common.ChannelTypeGroup.Uint8() {
-				groupIds = append(groupIds, m.ChannelID)
-			} else if m.ChannelType == common.ChannelTypePerson.Uint8() {
-				uids = append(uids, m.ChannelID)
-			}
-			if m.FromUID != "" {
-				msgFromUids = append(msgFromUids, m.FromUID)
-			}
-		}
-	}
+	groupIds, uids, msgFromUids := collectChannelIDs(realMessages)
 
 	var joinedGroups []*group.InfoResp
 	if req.OnlyMessage == 0 {
@@ -441,6 +427,9 @@ func (s *Search) global(c *wkhttp.Context) {
 					}
 				}
 			}
+			if msg.ChannelType == common.ChannelTypeCommunityTopic.Uint8() {
+				tempChannel = buildThreadChannel(msg.ChannelID, groups)
+			}
 			messagesResp = append(messagesResp, &messageResp{
 				MessageIDStr: msg.MessageIDStr,
 				MessageID:    msg.MessageID,
@@ -482,4 +471,47 @@ type messageResp struct {
 	IsDeleted    int8                   `json:"is_deleted"`        // 是否已删除
 	Channel      *channelResp           `json:"channel,omitempty"` // 消息所属channel
 	FromChannel  *channelResp           `json:"from_channel"`      // 消息发送者channel
+}
+
+func collectChannelIDs(messages []*config.MessageResp) (groupIDs, uids, fromUIDs []string) {
+	groupIDs = make([]string, 0)
+	uids = make([]string, 0)
+	fromUIDs = make([]string, 0)
+	for _, m := range messages {
+		switch {
+		case m.ChannelType == common.ChannelTypeGroup.Uint8():
+			groupIDs = append(groupIDs, m.ChannelID)
+		case m.ChannelType == common.ChannelTypePerson.Uint8():
+			uids = append(uids, m.ChannelID)
+		case m.ChannelType == common.ChannelTypeCommunityTopic.Uint8():
+			parentGroupNo, _, err := thread.ParseChannelID(m.ChannelID)
+			if err != nil {
+				log.Warn("解析Thread channel_id失败，跳过", zap.String("channel_id", m.ChannelID), zap.Error(err))
+			} else {
+				groupIDs = append(groupIDs, parentGroupNo)
+			}
+		}
+		if m.FromUID != "" {
+			fromUIDs = append(fromUIDs, m.FromUID)
+		}
+	}
+	return
+}
+
+func buildThreadChannel(channelID string, groups []*group.GroupResp) *channelResp {
+	parentGroupNo, _, err := thread.ParseChannelID(channelID)
+	if err != nil {
+		return nil
+	}
+	for _, g := range groups {
+		if g.GroupNo == parentGroupNo {
+			return &channelResp{
+				ChannelID:     channelID,
+				ChannelType:   common.ChannelTypeCommunityTopic.Uint8(),
+				ChannelName:   html.EscapeString(g.Name),
+				ChannelRemark: html.EscapeString(g.Remark),
+			}
+		}
+	}
+	return nil
 }
