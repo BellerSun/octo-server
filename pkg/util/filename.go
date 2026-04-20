@@ -12,11 +12,15 @@ import (
 //
 // Percent-encoded filenames are decoded. If the extracted filename is empty
 // (e.g. legacy path ending in "uuid_"), the full last segment is returned as fallback.
+//
+// Callers should pass raw (not pre-decoded) paths. If the path is already decoded,
+// the PathUnescape is a no-op for most filenames, but filenames containing literal
+// percent-encoded sequences may be double-decoded.
 func ExtractFilenameFromPath(path string) string {
-	parts := strings.Split(path, "/")
-	if len(parts) == 0 {
+	if path == "" {
 		return ""
 	}
+	parts := strings.Split(path, "/")
 	lastPart := parts[len(parts)-1]
 
 	// Try to strip legacy UUID prefix: 32 hex chars followed by underscore

@@ -11,11 +11,6 @@ import (
 	"github.com/Mininglamp-OSS/octo-lib/pkg/util"
 )
 
-// extractFilename delegates to the shared utility function.
-func extractFilename(ph string) string {
-	return pkgutil.ExtractFilenameFromPath(ph)
-}
-
 func TestObjectPathFormat(t *testing.T) {
 	filename := "qualcomm_review.xlsx"
 	objectPath := fmt.Sprintf("chat/%d/%s/%s", time.Now().Unix(), util.GenerUUID(), url.PathEscape(filename))
@@ -44,7 +39,7 @@ func TestObjectPathFormatWithSpecialChars(t *testing.T) {
 
 func TestLegacyUUIDStripping(t *testing.T) {
 	path := "chat/1713360000/afd1a8d99bb94bf0a8d2c1e3f4a5b6c7_report.xlsx"
-	got := extractFilename(path)
+	got := pkgutil.ExtractFilenameFromPath(path)
 	if got != "report.xlsx" {
 		t.Errorf("expected %q, got %q", "report.xlsx", got)
 	}
@@ -52,7 +47,7 @@ func TestLegacyUUIDStripping(t *testing.T) {
 
 func TestLegacyUUIDStrippingWithEncoding(t *testing.T) {
 	path := "chat/1713360000/afd1a8d99bb94bf0a8d2c1e3f4a5b6c7_" + url.PathEscape("报告.xlsx")
-	got := extractFilename(path)
+	got := pkgutil.ExtractFilenameFromPath(path)
 	if got != "报告.xlsx" {
 		t.Errorf("expected %q, got %q", "报告.xlsx", got)
 	}
@@ -61,7 +56,7 @@ func TestLegacyUUIDStrippingWithEncoding(t *testing.T) {
 func TestLegacyNoFalsePositive(t *testing.T) {
 	// Filename that happens to have _ at various positions but no valid 32-char hex prefix
 	path := "chat/1713360000/my_very_long_filename_with_underscores.xlsx"
-	got := extractFilename(path)
+	got := pkgutil.ExtractFilenameFromPath(path)
 	if got != "my_very_long_filename_with_underscores.xlsx" {
 		t.Errorf("expected %q, got %q", "my_very_long_filename_with_underscores.xlsx", got)
 	}
@@ -70,7 +65,7 @@ func TestLegacyNoFalsePositive(t *testing.T) {
 func TestNewPathLastSegment(t *testing.T) {
 	uuid := util.GenerUUID()
 	path := fmt.Sprintf("chat/%d/%s/file.xlsx", time.Now().Unix(), uuid)
-	got := extractFilename(path)
+	got := pkgutil.ExtractFilenameFromPath(path)
 	if got != "file.xlsx" {
 		t.Errorf("expected %q, got %q", "file.xlsx", got)
 	}
@@ -80,7 +75,7 @@ func TestNewPathEncodedFilename(t *testing.T) {
 	uuid := util.GenerUUID()
 	filename := "my report (final).xlsx"
 	path := fmt.Sprintf("chat/%d/%s/%s", time.Now().Unix(), uuid, url.PathEscape(filename))
-	got := extractFilename(path)
+	got := pkgutil.ExtractFilenameFromPath(path)
 	if got != filename {
 		t.Errorf("expected %q, got %q", filename, got)
 	}

@@ -251,11 +251,6 @@ func TestSpaceBots_ExcludesDeletedSpaceMembers(t *testing.T) {
 	}
 }
 
-// robotExtractFilename delegates to the shared utility function.
-func robotExtractFilename(ph string) string {
-	return pkgutil.ExtractFilenameFromPath(ph)
-}
-
 func TestRobotObjectPathFormat(t *testing.T) {
 	filename := "qualcomm_review.xlsx"
 	objectPath := fmt.Sprintf("chat/%d/%s/%s", time.Now().Unix(), util.GenerUUID(), url.PathEscape(filename))
@@ -266,25 +261,25 @@ func TestRobotObjectPathFormat(t *testing.T) {
 
 func TestRobotLegacyUUIDStripping(t *testing.T) {
 	path := "chat/1713360000/afd1a8d99bb94bf0a8d2c1e3f4a5b6c7_report.xlsx"
-	got := robotExtractFilename(path)
+	got := pkgutil.ExtractFilenameFromPath(path)
 	assert.Equal(t, "report.xlsx", got)
 }
 
 func TestRobotLegacyUUIDStrippingWithEncoding(t *testing.T) {
 	path := "chat/1713360000/afd1a8d99bb94bf0a8d2c1e3f4a5b6c7_" + url.PathEscape("报告.xlsx")
-	got := robotExtractFilename(path)
+	got := pkgutil.ExtractFilenameFromPath(path)
 	assert.Equal(t, "报告.xlsx", got)
 }
 
 func TestRobotLegacyNoFalsePositive(t *testing.T) {
 	path := "chat/1713360000/my_very_long_filename_with_underscores.xlsx"
-	got := robotExtractFilename(path)
+	got := pkgutil.ExtractFilenameFromPath(path)
 	assert.Equal(t, "my_very_long_filename_with_underscores.xlsx", got)
 }
 
 func TestRobotProxyFileNewPath(t *testing.T) {
 	uuid := util.GenerUUID()
 	path := fmt.Sprintf("chat/%d/%s/file.xlsx", time.Now().Unix(), uuid)
-	got := robotExtractFilename(path)
+	got := pkgutil.ExtractFilenameFromPath(path)
 	assert.Equal(t, "file.xlsx", got)
 }

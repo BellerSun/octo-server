@@ -1250,6 +1250,7 @@ func (bf *BotFather) botFileDownload(c *wkhttp.Context) {
 }
 
 // sanitizeBotFilePath 规范化文件路径，防止路径遍历攻击
+// TODO: sanitizeBotFilePath uses QueryUnescape but upload uses PathEscape. These handle "+" differently. Consider unifying to PathUnescape.
 func sanitizeBotFilePath(p string) (string, error) {
 	// 循环解码防止双重/多重 URL 编码绕过
 	decoded := p
