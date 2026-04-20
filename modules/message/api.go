@@ -52,14 +52,23 @@ func truncatedPayload(raw []byte) map[string]interface{} {
 			"content": truncatedContentSuffix,
 		}
 	}
+	// 统一把 content 规约为字符串：前端对 type=1 等文本类消息按 string 解析，
+	// bot 误发成嵌套对象（见 issue #1097）也要避免让前端按 object 处理。
+	var s string
 	switch v := m["content"].(type) {
 	case string:
-		if len(v) > truncatedContentHeadBytes {
-			m["content"] = v[:truncatedContentHeadBytes] + truncatedContentSuffix
-		}
+		s = v
+	case nil:
+		s = ""
 	default:
-		m["content"] = truncatedContentSuffix
+		if b, err := json.Marshal(v); err == nil {
+			s = string(b)
+		}
 	}
+	if len(s) > truncatedContentHeadBytes {
+		s = s[:truncatedContentHeadBytes]
+	}
+	m["content"] = s + truncatedContentSuffix
 	return m
 }
 
