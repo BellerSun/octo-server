@@ -196,6 +196,7 @@ type mockService struct {
 	lastObjectPath       string
 	lastContentDisp      string
 	presignedGetErr      error
+	lastGetDisposition   string
 }
 
 func (m *mockService) DownloadAndMakeCompose(uploadPath string, downloadURLs []string) (map[string]interface{}, error) {
@@ -224,7 +225,8 @@ func (m *mockService) PresignedPutURL(objectPath string, contentType string, con
 	return "https://example.com/upload?" + objectPath, "https://example.com/download/" + objectPath, nil
 }
 
-func (m *mockService) PresignedGetURL(objectPath string, filename string, expires time.Duration) (string, error) {
+func (m *mockService) PresignedGetURL(objectPath string, filename string, disposition string, expires time.Duration) (string, error) {
+	m.lastGetDisposition = disposition
 	if m.presignedGetErr != nil {
 		return "", m.presignedGetErr
 	}
@@ -566,26 +568,29 @@ func TestGetDownloadURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name         string
-		queryParams  string
-		wantStatus   int
-		wantURL      string
-		wantFilename string
-		wantErr      bool
+		name            string
+		queryParams     string
+		wantStatus      int
+		wantURL         string
+		wantFilename    string
+		wantDisposition string
+		wantErr         bool
 	}{
 		{
-			name:         "with path and filename",
-			queryParams:  "path=chat/test.jpg&filename=photo.jpg",
-			wantStatus:   http.StatusOK,
-			wantURL:      "https://example.com/signed-get/chat/test.jpg?fn=photo.jpg",
-			wantFilename: "photo.jpg",
+			name:            "with path and filename",
+			queryParams:     "path=chat/test.jpg&filename=photo.jpg",
+			wantStatus:      http.StatusOK,
+			wantURL:         "https://example.com/signed-get/chat/test.jpg?fn=photo.jpg",
+			wantFilename:    "photo.jpg",
+			wantDisposition: "attachment",
 		},
 		{
-			name:         "with path only, filename defaults to basename",
-			queryParams:  "path=chat/document.pdf",
-			wantStatus:   http.StatusOK,
-			wantURL:      "https://example.com/signed-get/chat/document.pdf?fn=document.pdf",
-			wantFilename: "document.pdf",
+			name:            "with path only, filename defaults to basename",
+			queryParams:     "path=chat/document.pdf",
+			wantStatus:      http.StatusOK,
+			wantURL:         "https://example.com/signed-get/chat/document.pdf?fn=document.pdf",
+			wantFilename:    "document.pdf",
+			wantDisposition: "attachment",
 		},
 		{
 			name:        "missing path returns error",
@@ -598,6 +603,38 @@ func TestGetDownloadURL(t *testing.T) {
 			queryParams: "path=",
 			wantStatus:  http.StatusBadRequest,
 			wantErr:     true,
+		},
+		{
+			name:            "disposition=inline passed through",
+			queryParams:     "path=chat/test.jpg&filename=photo.jpg&disposition=inline",
+			wantStatus:      http.StatusOK,
+			wantURL:         "https://example.com/signed-get/chat/test.jpg?fn=photo.jpg",
+			wantFilename:    "photo.jpg",
+			wantDisposition: "inline",
+		},
+		{
+			name:            "disposition=attachment passed through",
+			queryParams:     "path=chat/test.jpg&filename=photo.jpg&disposition=attachment",
+			wantStatus:      http.StatusOK,
+			wantURL:         "https://example.com/signed-get/chat/test.jpg?fn=photo.jpg",
+			wantFilename:    "photo.jpg",
+			wantDisposition: "attachment",
+		},
+		{
+			name:            "disposition empty defaults to attachment",
+			queryParams:     "path=chat/test.jpg&filename=photo.jpg",
+			wantStatus:      http.StatusOK,
+			wantURL:         "https://example.com/signed-get/chat/test.jpg?fn=photo.jpg",
+			wantFilename:    "photo.jpg",
+			wantDisposition: "attachment",
+		},
+		{
+			name:            "invalid disposition treated as attachment",
+			queryParams:     "path=chat/test.jpg&filename=photo.jpg&disposition=foobar",
+			wantStatus:      http.StatusOK,
+			wantURL:         "https://example.com/signed-get/chat/test.jpg?fn=photo.jpg",
+			wantFilename:    "photo.jpg",
+			wantDisposition: "attachment",
 		},
 	}
 
@@ -624,6 +661,7 @@ func TestGetDownloadURL(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.wantURL, resp["url"])
 				assert.Equal(t, tt.wantFilename, resp["filename"])
+				assert.Equal(t, tt.wantDisposition, mockSvc.lastGetDisposition)
 			}
 		})
 	}

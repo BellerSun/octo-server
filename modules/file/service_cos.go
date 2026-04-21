@@ -214,7 +214,7 @@ func (sc *ServiceCOS) DownloadURL(ph string, filename string) (string, error) {
 }
 
 // PresignedGetURL 生成预签名 GET URL，带 response-content-disposition 用于下载。
-func (sc *ServiceCOS) PresignedGetURL(objectPath string, filename string, expires time.Duration) (string, error) {
+func (sc *ServiceCOS) PresignedGetURL(objectPath string, filename string, disposition string, expires time.Duration) (string, error) {
 	cosConfig := sc.ctx.GetConfig().COS
 	client, err := sc.getClient()
 	if err != nil {
@@ -226,9 +226,12 @@ func (sc *ServiceCOS) PresignedGetURL(objectPath string, filename string, expire
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	if disposition != "inline" {
+		disposition = "attachment"
+	}
 	encodedFilename := "UTF-8''" + rfc5987Encode(filename)
 	params := url.Values{}
-	params.Set("response-content-disposition", fmt.Sprintf("attachment; filename*=%s", encodedFilename))
+	params.Set("response-content-disposition", fmt.Sprintf("%s; filename*=%s", disposition, encodedFilename))
 
 	presigned, err := client.PresignHeader(ctx, http.MethodGet, cosConfig.Bucket, key, expires, params, nil)
 	if err != nil {

@@ -42,7 +42,7 @@ type IService interface {
 	DownloadAndMakeCompose(uploadPath string, downloadURLs []string) (map[string]interface{}, error)
 	DownloadImage(url string, ctx context.Context) (io.ReadCloser, error)
 	PresignedPutURL(objectPath string, contentType string, contentDisposition string, expires time.Duration) (uploadURL string, downloadURL string, err error)
-	PresignedGetURL(objectPath string, filename string, expires time.Duration) (string, error)
+	PresignedGetURL(objectPath string, filename string, disposition string, expires time.Duration) (string, error)
 }
 
 // NewService NewService
@@ -97,7 +97,7 @@ type PresignedPutter interface {
 }
 
 type PresignedGetter interface {
-	PresignedGetURL(objectPath string, filename string, expires time.Duration) (string, error)
+	PresignedGetURL(objectPath string, filename string, disposition string, expires time.Duration) (string, error)
 }
 
 func (s *Service) PresignedPutURL(objectPath string, contentType string, contentDisposition string, expires time.Duration) (string, string, error) {
@@ -108,12 +108,12 @@ func (s *Service) PresignedPutURL(objectPath string, contentType string, content
 	return putter.PresignedPutURL(objectPath, contentType, contentDisposition, expires)
 }
 
-func (s *Service) PresignedGetURL(objectPath string, filename string, expires time.Duration) (string, error) {
+func (s *Service) PresignedGetURL(objectPath string, filename string, disposition string, expires time.Duration) (string, error) {
 	getter, ok := s.uploadService.(PresignedGetter)
 	if !ok {
 		return "", fmt.Errorf("当前文件服务不支持预签名下载")
 	}
-	return getter.PresignedGetURL(objectPath, filename, expires)
+	return getter.PresignedGetURL(objectPath, filename, disposition, expires)
 }
 
 func (s *Service) DownloadImage(url string, ctx context.Context) (io.ReadCloser, error) {

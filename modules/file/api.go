@@ -493,8 +493,13 @@ func (f *File) getDownloadURL(c *wkhttp.Context) {
 	}
 	filename = sanitizeFilename(filename)
 
+	disposition := c.Query("disposition")
+	if disposition != "inline" {
+		disposition = "attachment"
+	}
+
 	expiry := 30 * time.Minute
-	signedURL, err := f.service.PresignedGetURL(sanitized, filename, expiry)
+	signedURL, err := f.service.PresignedGetURL(sanitized, filename, disposition, expiry)
 	if err != nil {
 		f.Error("生成预签名下载URL失败", zap.Error(err))
 		c.ResponseError(errors.New("生成预签名下载URL失败"))
