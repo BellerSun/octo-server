@@ -221,35 +221,46 @@ func GetCoMemberUIDs(ctx *config.Context, uid string) ([]string, error) {
 // ---------- Invitation CRUD ----------
 
 func (d *DB) insertInvitation(m *InvitationModel) error {
-	_, err := d.session.InsertInto("space_invitation").Columns(util.AttrToUnderscore(m)...).Record(m).Exec()
+	// 显式列写入：dbr 的 Record 反射无法处理 *db.Time（未实现 driver.Valuer）。
+	var expires interface{}
+	if m.ExpiresAt != nil {
+		expires = time.Time(*m.ExpiresAt)
+	}
+	_, err := d.session.InsertInto("space_invitation").
+		Columns("space_id", "invite_code", "creator", "max_uses", "used_count", "expires_at", "status").
+		Values(m.SpaceId, m.InviteCode, m.Creator, m.MaxUses, m.UsedCount, expires, m.Status).
+		Exec()
 	return err
 }
 
-func (d *DB) queryInvitationsBySpaceID(spaceID string) ([]*InvitationModel, error) {
-	var models []*InvitationModel
-	_, err := d.session.Select("*").From("space_invitation").Where("space_id=? AND status=1", spaceID).OrderDir("created_at", false).Load(&models)
-	return models, err
-}
-
+// queryInvitationByCode 查询有效邀请码（status=1 且未过期）。
+// 过期码与不存在码同等处理，避免公开预览端点（getInviteInfo / getInvitePreview）
+// 通过 "有效/无效" 差异泄露"曾经有效"的码（issue #1000 枚举面收敛）。
 func (d *DB) queryInvitationByCode(code string) (*InvitationModel, error) {
 	var m InvitationModel
 	_, err := d.session.Select("*").From("space_invitation").
-		Where("invite_code=? and status=1", code).Load(&m)
+		Where("invite_code=? AND status=1 AND (expires_at IS NULL OR expires_at > ?)", code, time.Now()).
+		Load(&m)
 	if m.InviteCode == "" {
 		return nil, nil
 	}
 	return &m, err
 }
 
-func (d *DB) incrementInviteUsedCount(code string) error {
-	_, err := d.session.UpdateBySql("UPDATE space_invitation SET used_count=used_count+1 WHERE invite_code=?", code).Exec()
-	return err
-}
-
-// incrementInviteUsedCountAtomic atomically increments the used_count only if the limit has not been reached.
-// Returns true if the increment was successful (i.e., usage was allowed), false if the limit was already reached.
+// incrementInviteUsedCountAtomic atomically increments used_count iff the invite is
+// still valid (status=1, not expired, under max_uses). Filter conditions must stay in
+// sync with queryInvitationByCode so the read→write path keeps the same validity view,
+// closing TOCTOU windows where an admin disables the code (PUT status=0) or TTL elapses
+// between SELECT and UPDATE.
+// Returns true if the increment was applied, false if the row no longer qualifies.
 func (d *DB) incrementInviteUsedCountAtomic(code string) (bool, error) {
-	result, err := d.session.UpdateBySql("UPDATE space_invitation SET used_count=used_count+1 WHERE invite_code=? AND (max_uses=0 OR used_count<max_uses)", code).Exec()
+	result, err := d.session.UpdateBySql(
+		"UPDATE space_invitation SET used_count=used_count+1 "+
+			"WHERE invite_code=? AND status=1 "+
+			"AND (max_uses=0 OR used_count<max_uses) "+
+			"AND (expires_at IS NULL OR expires_at > ?)",
+		code, time.Now(),
+	).Exec()
 	if err != nil {
 		return false, err
 	}

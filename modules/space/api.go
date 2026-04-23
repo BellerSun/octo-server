@@ -1,6 +1,7 @@
 package space
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,12 +13,14 @@ import (
 
 	"github.com/Mininglamp-OSS/octo-server/modules/base/event"
 	spacepkg "github.com/Mininglamp-OSS/octo-server/pkg/space"
+	appwkhttp "github.com/Mininglamp-OSS/octo-server/pkg/wkhttp"
 	"github.com/Mininglamp-OSS/octo-lib/common"
 	"github.com/Mininglamp-OSS/octo-lib/config"
 	"github.com/Mininglamp-OSS/octo-lib/pkg/log"
 	"github.com/Mininglamp-OSS/octo-lib/pkg/util"
 	"github.com/Mininglamp-OSS/octo-lib/pkg/wkevent"
 	"github.com/Mininglamp-OSS/octo-lib/pkg/wkhttp"
+	rd "github.com/go-redis/redis"
 	"go.uber.org/zap"
 )
 
@@ -80,10 +83,22 @@ func (s *Space) Route(r *wkhttp.WKHttp) {
 		auth.POST("/:space_id/join-applies/:id/reject", s.rejectJoinApply)
 	}
 
+	// 邀请码预览端点（公开无认证）严格 per-IP 限流：防枚举 + 暴破（issue #1000）。
+	// 两个端点共享同一 limiter，使同一 IP 跨端点总配额受控。
+	// 阈值与 user 模块 login 同档（10 req/min, burst 5），详见 PR #1090。
+	// PoolSize=10：Lua 脚本短事务，与 user 模块 / main.go 保持一致。
+	rlRedis := rd.NewClient(&rd.Options{
+		Addr:       s.ctx.GetConfig().DB.RedisAddr,
+		Password:   s.ctx.GetConfig().DB.RedisPass,
+		MaxRetries: 1,
+		PoolSize:   10,
+	})
+	invitePreviewLimit := appwkhttp.StrictIPRateLimitMiddleware(context.Background(), rlRedis, "space_invite", 10.0/60, 5)
+
 	open := r.Group("/v1/space")
 	{
-		open.GET("/invite/:invite_code", s.getInviteInfo)
-		open.GET("/invite/:invite_code/preview", s.getInvitePreview)
+		open.GET("/invite/:invite_code", invitePreviewLimit, s.getInviteInfo)
+		open.GET("/invite/:invite_code/preview", invitePreviewLimit, s.getInvitePreview)
 		open.GET("/join-approve", s.joinApprovePage)
 		open.GET("/join-approve/detail", s.joinApproveDetail)
 		open.POST("/join-approve/sure", s.joinApproveSure)
@@ -159,17 +174,13 @@ func (s *Space) createSpace(c *wkhttp.Context) {
 		return
 	}
 
-	resp := map[string]interface{}{
+	c.Response(map[string]interface{}{
 		"space_id":    result.SpaceID,
 		"name":        req.Name,
 		"description": req.Description,
 		"logo":        req.Logo,
 		"join_mode":   req.JoinMode,
-	}
-	if result.InviteCode != "" {
-		resp["invite_code"] = result.InviteCode
-	}
-	c.Response(resp)
+	})
 }
 
 // createSpaceCore 创建空间事务核心（供用户侧与管理端代建复用）。
@@ -178,7 +189,6 @@ func (s *Space) createSpace(c *wkhttp.Context) {
 // 触发 SpaceMemberJoin 事件。与原先 createSpace 行为保持一致。
 func (s *Space) createSpaceCore(p createSpaceParams) (*createSpaceResult, error) {
 	spaceId := util.GenerUUID()
-	inviteCode := util.GenerUUID()[:8]
 
 	tx, err := s.ctx.DB().Begin()
 	if err != nil {
@@ -213,13 +223,14 @@ func (s *Space) createSpaceCore(p createSpaceParams) (*createSpaceResult, error)
 	}
 
 	result := &createSpaceResult{SpaceID: spaceId}
-	if inviteErr := s.db.insertInvitation(&InvitationModel{
-		SpaceId:    spaceId,
-		InviteCode: inviteCode,
-		Creator:    p.Creator,
-		Status:     1,
-	}); inviteErr == nil {
-		result.InviteCode = inviteCode
+	inviteModel := &InvitationModel{
+		SpaceId: spaceId,
+		Creator: p.Creator,
+		Status:  1,
+	}
+	applyAutoInviteDefaults(inviteModel, time.Now())
+	if code, inviteErr := s.insertInvitationWithRetry(inviteModel); inviteErr == nil {
+		result.InviteCode = code
 	} else {
 		s.Warn("创建默认邀请码失败", zap.Error(inviteErr), zap.String("spaceId", spaceId))
 	}
@@ -265,13 +276,6 @@ func (s *Space) getSpace(c *wkhttp.Context) {
 		return
 	}
 
-	// 查询邀请码
-	inviteCode := ""
-	invitations, invErr := s.db.queryInvitationsBySpaceID(spaceId)
-	if invErr == nil && len(invitations) > 0 {
-		inviteCode = invitations[0].InviteCode
-	}
-
 	c.Response(spaceResp{
 		SpaceId:     detail.SpaceId,
 		Name:        detail.Name,
@@ -282,7 +286,6 @@ func (s *Space) getSpace(c *wkhttp.Context) {
 		Role:        detail.Role,
 		MaxUsers:    detail.MaxUsers,
 		MemberCount: detail.MemberCount,
-		InviteCode:  inviteCode,
 		JoinMode:    detail.JoinMode,
 		CreatedAt:   detail.CreatedAt.String(),
 		UpdatedAt:   detail.UpdatedAt.String(),
@@ -362,11 +365,6 @@ func (s *Space) mySpaces(c *wkhttp.Context) {
 
 	resps := make([]spaceResp, 0, len(spaces))
 	for _, sp := range spaces {
-		inviteCode := ""
-		invitations, invErr := s.db.queryInvitationsBySpaceID(sp.SpaceId)
-		if invErr == nil && len(invitations) > 0 {
-			inviteCode = invitations[0].InviteCode
-		}
 		resps = append(resps, spaceResp{
 			SpaceId:     sp.SpaceId,
 			Name:        sp.Name,
@@ -377,7 +375,6 @@ func (s *Space) mySpaces(c *wkhttp.Context) {
 			Role:        sp.Role,
 			MaxUsers:    sp.MaxUsers,
 			MemberCount: sp.MemberCount,
-			InviteCode:  inviteCode,
 			JoinMode:    sp.JoinMode,
 			CreatedAt:   sp.CreatedAt.String(),
 			UpdatedAt:   sp.UpdatedAt.String(),
@@ -689,14 +686,15 @@ func (s *Space) createInvite(c *wkhttp.Context) {
 		return
 	}
 
-	inviteCode := util.GenerUUID()[:8]
-	err = s.db.insertInvitation(&InvitationModel{
-		SpaceId:    spaceId,
-		InviteCode: inviteCode,
-		Creator:    loginUID,
-		Status:     1,
-	})
+	inviteModel := &InvitationModel{
+		SpaceId: spaceId,
+		Creator: loginUID,
+		Status:  1,
+	}
+	applyAutoInviteDefaults(inviteModel, time.Now())
+	inviteCode, err := s.insertInvitationWithRetry(inviteModel)
 	if err != nil {
+		s.Error("创建邀请链接失败", zap.Error(err), zap.String("spaceId", spaceId))
 		c.ResponseError(errors.New("创建邀请链接失败"))
 		return
 	}
@@ -726,17 +724,9 @@ func (s *Space) joinSpace(c *wkhttp.Context) {
 		return
 	}
 	if invitation == nil {
+		// queryInvitationByCode 已在 SQL 层过滤 status!=1 与已过期，命中即有效。
 		c.ResponseError(errors.New("邀请码无效或已过期"))
 		return
-	}
-
-	// 检查是否过期
-	if invitation.ExpiresAt != nil {
-		expiresAt := time.Time(*invitation.ExpiresAt)
-		if !expiresAt.IsZero() && expiresAt.Before(time.Now()) {
-			c.ResponseError(errors.New("邀请码已过期"))
-			return
-		}
 	}
 
 	// 检查空间是否存在
@@ -938,7 +928,7 @@ func (s *Space) getInviteInfo(c *wkhttp.Context) {
 
 	expiresAtStr := ""
 	if invitation.ExpiresAt != nil {
-		expiresAtStr = time.Time(*invitation.ExpiresAt).Format("2006-01-02 15:04:05")
+		expiresAtStr = time.Time(*invitation.ExpiresAt).Format(inviteTimeLayout)
 	}
 
 	// 查询 Space 成员数
@@ -998,7 +988,7 @@ func (s *Space) getInvitePreview(c *wkhttp.Context) {
 
 	expiresAtStr := ""
 	if invitation.ExpiresAt != nil {
-		expiresAtStr = time.Time(*invitation.ExpiresAt).Format("2006-01-02 15:04:05")
+		expiresAtStr = time.Time(*invitation.ExpiresAt).Format(inviteTimeLayout)
 	}
 
 	// 公开接口只返回基本空间信息，不暴露 Bot 列表和精确成员数量
@@ -1055,16 +1045,20 @@ func (s *Space) updateInvite(c *wkhttp.Context) {
 		c.ResponseError(errors.New("请求参数错误"))
 		return
 	}
+	if req.MaxUses == nil && req.ExpiresAt == nil {
+		c.ResponseError(errors.New("至少需要提供 max_uses 或 expires_at 之一"))
+		return
+	}
+	if req.MaxUses != nil && *req.MaxUses < 0 {
+		c.ResponseError(errors.New("max_uses 不能为负"))
+		return
+	}
 
-	// 解析过期时间
-	var expiresAt *time.Time
-	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
-		t, err := time.Parse("2006-01-02 15:04:05", *req.ExpiresAt)
-		if err != nil {
-			c.ResponseError(errors.New("过期时间格式错误，请使用 2006-01-02 15:04:05 格式"))
-			return
-		}
-		expiresAt = &t
+	// 解析过期时间：与管理端 parseInviteExpiresAt 共用 time.Local 约定，避免双路径写库时区漂移。
+	expiresAt, err := parseInviteExpiresAt(req.ExpiresAt)
+	if err != nil {
+		c.ResponseError(err)
+		return
 	}
 
 	err = s.db.updateInvitation(code, req.MaxUses, expiresAt)
