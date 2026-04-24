@@ -44,7 +44,14 @@ var (
 	ErrPinnedAlreadyExists = errors.New("该频道已置顶")
 )
 
-// Add 添加置顶频道（使用事务 + INSERT IGNORE 防止竞态）
+// Add 添加置顶频道。
+//
+// 并发一致性：
+//   - 先 SELECT COUNT(*) ... FOR UPDATE 取当前读并在匹配范围上加 next-key lock，
+//     串行化同一 (uid, space_id) 下的并发插入。REPEATABLE READ 下普通的
+//     一致性读 COUNT 使用事务启动时的快照，看不到其他事务已提交的插入，
+//     因此必须用 FOR UPDATE 保证上限检查的正确性。
+//   - 唯一索引 uk_user_space_channel 配合 INSERT IGNORE 检测重复。
 func (d *PinnedDB) Add(uid, spaceID, channelID string, channelType uint8, maxLimit int) error {
 	tx, err := d.session.Begin()
 	if err != nil {
@@ -52,20 +59,17 @@ func (d *PinnedDB) Add(uid, spaceID, channelID string, channelType uint8, maxLim
 	}
 	defer tx.RollbackUnlessCommitted()
 
-	// 检查当前数量（带锁）
 	var count int
-	_, err = tx.SelectBySql(
+	if _, err := tx.SelectBySql(
 		"SELECT COUNT(*) FROM user_pinned_channel WHERE uid=? AND space_id=? FOR UPDATE",
 		uid, spaceID,
-	).Load(&count)
-	if err != nil {
+	).Load(&count); err != nil {
 		return err
 	}
 	if count >= maxLimit {
 		return ErrPinnedLimitExceeded
 	}
 
-	// 获取当前最大 sort_order
 	var maxSort int
 	if _, err := tx.SelectBySql(
 		"SELECT IFNULL(MAX(sort_order), 0) FROM user_pinned_channel WHERE uid=? AND space_id=?",
@@ -74,7 +78,6 @@ func (d *PinnedDB) Add(uid, spaceID, channelID string, channelType uint8, maxLim
 		return err
 	}
 
-	// 使用 INSERT IGNORE 防止重复
 	result, err := tx.InsertBySql(
 		"INSERT IGNORE INTO user_pinned_channel (uid, space_id, channel_id, channel_type, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)",
 		uid, spaceID, channelID, channelType, maxSort+1, time.Now(),
@@ -82,8 +85,6 @@ func (d *PinnedDB) Add(uid, spaceID, channelID string, channelType uint8, maxLim
 	if err != nil {
 		return err
 	}
-
-	// 检查是否实际插入（rows affected = 0 表示已存在）
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
 		return ErrPinnedAlreadyExists
@@ -111,14 +112,63 @@ func (d *PinnedDB) List(uid, spaceID string) ([]*PinnedChannelModel, error) {
 	return list, err
 }
 
-// PinnedSortItem 排序项
+// PinnedSortItem 排序项。SortOrder 由服务端按数组顺序重新分配，
+// 客户端不需要也不应该提交；因此结构体中不包含 SortOrder 字段。
 type PinnedSortItem struct {
 	ChannelID   string `json:"channel_id"`
 	ChannelType uint8  `json:"channel_type"`
-	SortOrder   int    `json:"sort_order"`
 }
 
-// UpdateSort 更新排序
+// pinnedKey 唯一标识一个置顶频道（uid + space 外部已绑定）
+type pinnedKey struct {
+	ChannelID   string
+	ChannelType uint8
+}
+
+// PinnedSortError 表示 UpdateSort 请求参数校验失败，属于客户端错误。
+// handler 可以通过 errors.As 判断并直接把 message 透传给客户端，
+// 以区分 DB/系统错误（走泛化的 "更新排序失败" 提示）。
+type PinnedSortError struct{ msg string }
+
+func (e *PinnedSortError) Error() string { return e.msg }
+
+func newPinnedSortError(msg string) error { return &PinnedSortError{msg: msg} }
+
+// validatePinnedSortItems 校验排序请求。返回的错误（若非 nil）始终是 *PinnedSortError。
+//
+// 规则：
+//   - items 不能为空；
+//   - items 中不能有重复的 (channel_id, channel_type)；
+//   - items 必须覆盖当前用户在当前 Space 下的 *全部* 置顶频道，
+//     否则未提交的频道会保留旧 sort_order，与新编号产生冲突；
+//   - 每个 item 必须已被当前用户置顶。
+func validatePinnedSortItems(items []PinnedSortItem, existing map[pinnedKey]struct{}) error {
+	if len(items) == 0 {
+		return newPinnedSortError("items 不能为空")
+	}
+	seen := make(map[pinnedKey]struct{}, len(items))
+	for _, it := range items {
+		k := pinnedKey{ChannelID: it.ChannelID, ChannelType: it.ChannelType}
+		if _, dup := seen[k]; dup {
+			return newPinnedSortError("items 中存在重复的频道")
+		}
+		seen[k] = struct{}{}
+		if _, ok := existing[k]; !ok {
+			return newPinnedSortError("提交的频道未置顶或不属于当前用户")
+		}
+	}
+	if len(items) != len(existing) {
+		return newPinnedSortError("必须提交所有置顶频道")
+	}
+	return nil
+}
+
+// UpdateSort 更新置顶排序。
+//
+// 行为说明：
+//   - 忽略客户端提交的 SortOrder 字段，按 items 数组顺序从 1 开始重新编号，
+//     避免客户端伪造 sort_order 造成冲突或超出范围。
+//   - 校验所有提交的频道都已被当前用户在当前 Space 下置顶。
 func (d *PinnedDB) UpdateSort(uid, spaceID string, items []PinnedSortItem) error {
 	tx, err := d.session.Begin()
 	if err != nil {
@@ -126,12 +176,27 @@ func (d *PinnedDB) UpdateSort(uid, spaceID string, items []PinnedSortItem) error
 	}
 	defer tx.RollbackUnlessCommitted()
 
-	for _, item := range items {
-		_, err = tx.Update("user_pinned_channel").
-			Set("sort_order", item.SortOrder).
+	var rows []PinnedChannelModel
+	if _, err = tx.Select("channel_id", "channel_type").
+		From("user_pinned_channel").
+		Where("uid=? AND space_id=?", uid, spaceID).
+		Load(&rows); err != nil {
+		return err
+	}
+	existing := make(map[pinnedKey]struct{}, len(rows))
+	for _, r := range rows {
+		existing[pinnedKey{ChannelID: r.ChannelID, ChannelType: r.ChannelType}] = struct{}{}
+	}
+
+	if err := validatePinnedSortItems(items, existing); err != nil {
+		return err
+	}
+
+	for i, item := range items {
+		if _, err = tx.Update("user_pinned_channel").
+			Set("sort_order", i+1).
 			Where("uid=? AND space_id=? AND channel_id=? AND channel_type=?", uid, spaceID, item.ChannelID, item.ChannelType).
-			Exec()
-		if err != nil {
+			Exec(); err != nil {
 			return err
 		}
 	}
