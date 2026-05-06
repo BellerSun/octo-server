@@ -96,9 +96,25 @@ type verifyTokenReq struct {
 	ReturnTo string `json:"return_to,omitempty"`
 }
 
-// octoVerifyJWTClaims 见 GH#1300 JWT claims 定义。
+// octoVerifyJWTClaims 见 GH#1300 / GH#1305 JWT claims 定义。
+//
+// DisplayName / ShortNo 用于 verify-service consent 同意页友好展示，
+// 取代原先只能显示一串 UID 的窘态（GH#1305）。两者都加 omitempty：
+//   - 老版 verify-service 遇到多余字段只会忽略；
+//   - 新版 verify-service 在空值时走 fallback（由 service 层决定展示什么），
+//     这里不自行 fallback 到 UID，避免 UID 被间接渲染进 consent HTML。
+//
+// 字段命名：`short_no` 是用户的短号（如 `yujiawei`），不是登录名。Model 里
+// 另有一个 `Username` 字段表示登录用户名（测试里 `Username: "zhangsan"`），
+// 两者是不同的业务概念，codex review (GH#1306) 要求在 JWT claim 里用
+// `short_no` 显式区分，避免 verify-service 侧把它当登录名使用。
+//
+// 隐私：两个字段仅随 JWT body 下发到 verify-service，不会出现在任何跳转 URL
+// 的 query 参数中（buildVerifyURL 只把 token / return_to 拼成 URL）。
 type octoVerifyJWTClaims struct {
-	Purpose string `json:"purpose"`
+	Purpose     string `json:"purpose"`
+	DisplayName string `json:"display_name,omitempty"`
+	ShortNo     string `json:"short_no,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -282,8 +298,30 @@ func (u *User) issueVerifyToken(c *wkhttp.Context) {
 
 	now := time.Now()
 	exp := now.Add(octoVerifyJWTTTL)
+
+	// 从用户表取 display_name / short_no 塞 claims，让 verify-service consent 页
+	// 可以显示"欢迎 张三 (9001)"而不是一串 UID（GH#1305）。
+	//   - DisplayName = Model.Name（昵称）
+	//   - ShortNo     = Model.ShortNo（短号），为空就留空，不 fallback 到 UID
+	// 注意：claim key 叫 `short_no` 而不是 `username`，因为 Model.Username 另指
+	// 登录名（codex review GH#1306 要求区分，避免 verify-service 误用）。
+	// 查询失败不阻断签发：登录态已经通过 AuthMiddleware 验过，claims 友好化是
+	// 体验优化而非安全必需；失败时 claims 对应字段留空，verify-service 会走
+	// 自己的默认展示逻辑。
+	var displayName, shortNo string
+	userModel, err := u.db.QueryByUID(uid)
+	if err != nil {
+		u.Error("查询登录用户信息失败（签发 verify-token），claims 将缺少 display_name/short_no",
+			zap.Error(err), zap.String("uid", uid))
+	} else if userModel != nil {
+		displayName = userModel.Name
+		shortNo = userModel.ShortNo
+	}
+
 	claims := octoVerifyJWTClaims{
-		Purpose: octoVerifyJWTPurpose,
+		Purpose:     octoVerifyJWTPurpose,
+		DisplayName: displayName,
+		ShortNo:     shortNo,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   uid,
 			IssuedAt:  jwt.NewNumericDate(now),

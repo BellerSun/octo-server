@@ -107,14 +107,30 @@ JWT claims：
 
 ```json
 {
-  "sub":     "<octo_user_id>",
-  "purpose": "verify",
-  "iat":     <now>,
-  "exp":     <now+300>
+  "sub":          "<octo_user_id>",
+  "purpose":      "verify",
+  "display_name": "<user.name>",      // 昵称，可选（omitempty）
+  "short_no":     "<user.short_no>",  // 短号，可选（omitempty）
+  "iat":          <now>,
+  "exp":          <now+300>
 }
 ```
 
 算法：HS256。密钥：`OCTO_JWT_SECRET`（与 verify-service 共享）。
+
+> **命名说明**：`short_no` 是用户的短号（如 `yujiawei`），不是登录名（登录名字段在其他 API 是 `username`，两者不要混淆）。此前 claim key 曾叫 `username`，但 `Model.Username` 在 OCTO user 表里另指登录用户名（例：`zhangsan`），codex review (GH#1306) 指出两个 "username" 指向不同业务概念后，本字段在 merge 前改名为 `short_no`。
+
+`display_name` / `short_no` 字段（GH#1305，YUJ-366）：
+
+- **用途**：verify-service consent 同意页展示当前登录用户，避免只能显示一串 UID。
+- **来源**：OCTO 后端从 `user` 表（登录态 UID 对应行）读 `name` / `short_no`。
+- **隐私影响**：
+  - 仅随 JWT body 下发到 verify-service，**不会出现在任何跳转 URL 的 query 参数中**；
+  - verify-service 侧会把 `display_name` render 到 consent HTML（服务端模板转义）。
+- **空值处理**：两个字段均 `omitempty`：
+  - OCTO 侧：`short_no` 为空就留空，**不 fallback 到 UID**（避免 UID 被间接渲染进 HTML），由 verify-service 层决定如何处理空值；
+  - verify-service 侧：DB 查询失败或字段缺失时，走 service 自己的默认展示逻辑。
+- **向后兼容**：`omitempty` + JWT 解码器默认忽略未知字段，旧版 verify-service 无需同步升级即可继续工作。
 
 ## 数据库
 

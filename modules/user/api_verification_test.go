@@ -1,21 +1,26 @@
 package user
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Mininglamp-OSS/octo-lib/testutil"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/stretchr/testify/assert"
 )
 
-// 本文件只测纯函数层（签名校验、URL 构造、JWT 格式）；
-// 端到端 HTTP 层的集成测试需要 testutil.NewTestServer + MySQL，
-// 放到 E2E issue 处统一做。
+// 本文件主要测纯函数层（签名校验、URL 构造、JWT 格式）；
+// issueVerifyToken 的 claims 断言走 testutil.NewTestServer 的轻量集成测试
+// （需要 MySQL，与 api_destroy_test.go 对齐）。
 
 func TestVerifyOCTOSignature_Valid(t *testing.T) {
 	secret := "test-secret"
@@ -156,4 +161,103 @@ func TestVerifyJWT_Roundtrip(t *testing.T) {
 	// TTL 正好 5 分钟
 	exp := parsed.ExpiresAt.Time.Sub(parsed.IssuedAt.Time)
 	assert.Equal(t, 5*time.Minute, exp)
+}
+
+// parseVerifyTokenClaims 解码 /v1/internal/verify-token 响应里的 JWT，
+// 忽略签名校验（本测试只关心 claims 字段值；签名 roundtrip 另有 TestVerifyJWT_Roundtrip 覆盖）。
+func parseVerifyTokenClaims(t *testing.T, body []byte) octoVerifyJWTClaims {
+	t.Helper()
+	var resp verifyTokenResp
+	assert.NoError(t, json.Unmarshal(body, &resp))
+	assert.NotEmpty(t, resp.Token, "token 必须非空: %s", string(body))
+
+	parser := jwt.NewParser()
+	var claims octoVerifyJWTClaims
+	// ParseUnverified 跳过签名校验，只解码 payload。
+	_, _, err := parser.ParseUnverified(resp.Token, &claims)
+	assert.NoError(t, err)
+	return claims
+}
+
+// TestVerifyTokenClaimsHasDisplayName 校验：
+//   - 用户有 Name / ShortNo 时，签出的 JWT claims 里 display_name / short_no 都被填上，
+//   - purpose / sub 与既定契约一致。
+//
+// 注意：claim key 叫 `short_no` 而不是 `username`，因为 Model.Username（这里
+// 插入的是 `"zhangsan"`）另指登录用户名，和短号是不同的业务概念
+// （codex review GH#1306 要求区分）。
+func TestVerifyTokenClaimsHasDisplayName(t *testing.T) {
+	t.Setenv("OCTO_JWT_SECRET", "test-jwt-secret")
+	t.Setenv("OCTO_VERIFY_URL_BASE", "")
+	t.Setenv("OCTO_VERIFY_RETURN_TO_DEFAULT", "")
+
+	s, ctx := testutil.NewTestServer()
+	u := New(ctx)
+	assert.NoError(t, u.db.Insert(&Model{
+		UID:      testutil.UID,
+		Username: "zhangsan",
+		Name:     "张三",
+		ShortNo:  "9001",
+		Status:   1,
+	}))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/v1/internal/verify-token", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("token", testutil.Token)
+	req.Header.Set("Content-Type", "application/json")
+	s.GetRoute().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	claims := parseVerifyTokenClaims(t, w.Body.Bytes())
+	assert.Equal(t, octoVerifyJWTPurpose, claims.Purpose)
+	assert.Equal(t, testutil.UID, claims.Subject)
+	assert.Equal(t, "张三", claims.DisplayName)
+	assert.Equal(t, "9001", claims.ShortNo)
+}
+
+// TestVerifyTokenClaimsEmptyWhenLoginInfoEmpty 校验：
+//   - 用户 Name / ShortNo 均为空时，签发不 panic、不 500，
+//   - JWT claims 里 DisplayName / ShortNo 都是空串（omitempty 保证 JSON 里不出现这两个 key，
+//     老版 verify-service 也能正常解码），
+//   - 不 fallback 到 UID（UID 不会泄露到 display_name / short_no 字段）。
+func TestVerifyTokenClaimsEmptyWhenLoginInfoEmpty(t *testing.T) {
+	t.Setenv("OCTO_JWT_SECRET", "test-jwt-secret")
+	t.Setenv("OCTO_VERIFY_URL_BASE", "")
+	t.Setenv("OCTO_VERIFY_RETURN_TO_DEFAULT", "")
+
+	s, ctx := testutil.NewTestServer()
+	u := New(ctx)
+	// Name / ShortNo 故意留空，模拟老账号 / 迁移中用户。
+	assert.NoError(t, u.db.Insert(&Model{
+		UID:      testutil.UID,
+		Username: "legacy_user",
+		Status:   1,
+	}))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/v1/internal/verify-token", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("token", testutil.Token)
+	req.Header.Set("Content-Type", "application/json")
+	s.GetRoute().ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	// 解析签出的 token —— 不应 panic，claims 字段为空。
+	var resp verifyTokenResp
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	claims := parseVerifyTokenClaims(t, w.Body.Bytes())
+	assert.Equal(t, octoVerifyJWTPurpose, claims.Purpose)
+	assert.Equal(t, testutil.UID, claims.Subject)
+	assert.Equal(t, "", claims.DisplayName, "display_name 空值不应 fallback 到 UID")
+	assert.Equal(t, "", claims.ShortNo, "short_no 空值不应 fallback 到 UID")
+	assert.NotEqual(t, testutil.UID, claims.DisplayName)
+	assert.NotEqual(t, testutil.UID, claims.ShortNo)
+
+	// 进一步确认：omitempty 生效 → JSON payload 里没有这两个 key，老 verify-service 能忽略多余字段。
+	parts := strings.Split(resp.Token, ".")
+	assert.Len(t, parts, 3)
+	payload, err := jwt.DecodeSegment(parts[1])
+	assert.NoError(t, err)
+	assert.NotContains(t, string(payload), `"display_name"`)
+	assert.NotContains(t, string(payload), `"short_no"`)
 }
