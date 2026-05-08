@@ -370,6 +370,8 @@ func (ba *BotAPI) botGroupCreate(c *wkhttp.Context) {
 		).Load(&spaceIDs)
 		if spErr != nil {
 			ba.Error("query bot space failed", zap.Error(spErr))
+			c.ResponseError(errors.New("failed to determine bot space association"))
+			return
 		}
 		if len(spaceIDs) > 0 {
 			req.SpaceID = spaceIDs[0]

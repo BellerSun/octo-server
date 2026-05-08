@@ -627,7 +627,11 @@ func (ab *AppBot) deleteBot(c *wkhttp.Context) {
 
 	// Invalidate IM token on delete — all bots get IM token at creation time,
 	// so we must always rotate to random to revoke access regardless of status.
-	randomToken, _ := generateAppBotToken()
+	randomToken, err := generateAppBotToken()
+	if err != nil {
+		ab.Error("generateAppBotToken failed during bot deletion, using revocation fallback", zap.Error(err))
+		randomToken = "REVOKED-" + bot.UID
+	}
 	ab.ctx.UpdateIMToken(config.UpdateIMTokenReq{
 		UID:         bot.UID,
 		Token:       randomToken,
