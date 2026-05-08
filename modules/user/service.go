@@ -707,6 +707,9 @@ func (s *Service) GetUser(uid string) (*Resp, error) {
 
 // resolveAppBot checks if UID is an App Bot and returns a synthetic Resp.
 // Returns nil if not an App Bot or resolver not registered.
+// Design: registry is the source of truth for published App Bot identity.
+// Consistency with user table is maintained by updateBot (dual-write to registry + user table).
+// If registry returns empty name (deleted/unpublished), falls through to nil → DB lookup.
 func (s *Service) resolveAppBot(uid string) *Resp {
 	if !strings.HasPrefix(uid, "app_") || !strings.HasSuffix(uid, "_bot") {
 		return nil

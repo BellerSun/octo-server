@@ -2,7 +2,7 @@ package space
 
 import (
 	"errors"
-	"log"
+	"go.uber.org/zap"
 	"time"
 
 	"github.com/Mininglamp-OSS/octo-lib/config"
@@ -338,7 +338,7 @@ func GetCommonSpaceID(ctx *config.Context, uid1, uid2 string) string {
 		LIMIT 1
 	`, uid1, uid2).Load(&spaceID)
 	if err != nil {
-		log.Printf("[WARN] GetCommonSpaceID query failed: uid1=%s uid2=%s err=%v", uid1, uid2, err)
+		ctx.Warn("GetCommonSpaceID query failed", zap.String("uid1", uid1), zap.String("uid2", uid2), zap.Error(err))
 	}
 	return spaceID
 }

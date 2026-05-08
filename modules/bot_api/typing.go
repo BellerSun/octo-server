@@ -74,6 +74,8 @@ func (ba *BotAPI) typing(c *wkhttp.Context) {
 		}
 		ba.ctx.GetRedisConn().SetAndExpire(typingStartKey, fmt.Sprintf("%d", now), time.Duration(typingKeyTTL)*time.Second)
 		ba.ctx.GetRedisConn().Incr(typingCountKey)
+		// Unconditional SetExpire: if a prior crash left typingCountKey without TTL, this fixes it.
+		// Worst case: TTL refreshed on new window creation (acceptable for typing throttle).
 		ba.ctx.GetRedisConn().SetExpire(typingCountKey, time.Duration(typingKeyTTL)*time.Second)
 	}
 

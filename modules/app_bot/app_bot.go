@@ -630,7 +630,7 @@ func (ab *AppBot) deleteBot(c *wkhttp.Context) {
 	randomToken, err := generateAppBotToken()
 	if err != nil {
 		ab.Error("generateAppBotToken failed during bot deletion, using revocation fallback", zap.Error(err))
-		randomToken = "REVOKED-" + bot.UID
+		randomToken = fmt.Sprintf("REVOKED-%s-%d", bot.UID, time.Now().UnixNano())
 	}
 	ab.ctx.UpdateIMToken(config.UpdateIMTokenReq{
 		UID:         bot.UID,

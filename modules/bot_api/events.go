@@ -3,7 +3,6 @@ package bot_api
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 
 	"github.com/Mininglamp-OSS/octo-lib/common"
@@ -130,9 +129,7 @@ func (ba *BotAPI) getEventsResult(robotID string, eventID int64, limit int64) ([
 			events = append(events, &ev)
 		}
 
-		sort.Slice(events, func(i, j int) bool {
-			return events[i].EventID < events[j].EventID
-		})
+		// ZRangeByScore returns events already sorted by score (eventID). No need to re-sort.
 
 		for _, ev := range events {
 			resp := &eventResp{
