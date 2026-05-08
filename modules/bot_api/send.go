@@ -115,10 +115,10 @@ func (ba *BotAPI) checkSendPermission(c *wkhttp.Context, botKind, robotID, chann
 		if channelType == common.ChannelTypeGroup.Uint8() {
 			// Group: check bot is a group member
 			var count int
-			_, err := ba.db.session.SelectBySql(
+			err := ba.db.session.SelectBySql(
 				"SELECT COUNT(*) FROM group_member WHERE group_no=? AND uid=? AND is_deleted=0",
 				channelID, robotID,
-			).Load(&count)
+			).LoadOne(&count)
 			if err != nil {
 				ba.Error("查询群成员失败", zap.Error(err))
 				return errors.New("查询群成员失败")
@@ -133,10 +133,10 @@ func (ba *BotAPI) checkSendPermission(c *wkhttp.Context, botKind, robotID, chann
 				return errors.New("invalid thread channel_id format")
 			}
 			var count int
-			_, err := ba.db.session.SelectBySql(
+			err := ba.db.session.SelectBySql(
 				"SELECT COUNT(*) FROM group_member WHERE group_no=? AND uid=? AND is_deleted=0",
 				parts[0], robotID,
-			).Load(&count)
+			).LoadOne(&count)
 			if err != nil {
 				ba.Error("查询群成员失败", zap.Error(err))
 				return errors.New("查询群成员失败")
@@ -169,10 +169,10 @@ func (ba *BotAPI) checkSendPermission(c *wkhttp.Context, botKind, robotID, chann
 // isSpaceMember checks if a user is a member of the given space.
 func (ba *BotAPI) isSpaceMember(uid, spaceID string) (bool, error) {
 	var count int
-	_, err := ba.db.session.SelectBySql(
+	err := ba.db.session.SelectBySql(
 		"SELECT COUNT(*) FROM space_member WHERE space_id=? AND uid=? AND status=1",
 		spaceID, uid,
-	).Load(&count)
+	).LoadOne(&count)
 	if err != nil {
 		ba.Error("isSpaceMember query failed", zap.String("uid", uid), zap.String("spaceID", spaceID), zap.Error(err))
 		return false, err
@@ -295,7 +295,9 @@ func (ba *BotAPI) readReceipt(c *wkhttp.Context) {
 				strings.Join(valueStrings, ","))
 			_, err = ba.db.session.InsertBySql(stmt, valueArgs...).Exec()
 			if err != nil {
-				ba.Warn("插入已读记录失败", zap.Error(err))
+				ba.Error("插入已读记录失败", zap.Error(err))
+				c.ResponseError(errors.New("保存已读记录失败"))
+				return
 			}
 
 			// Write Redis cache for read receipt aggregation

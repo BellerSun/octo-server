@@ -568,6 +568,7 @@ func (ab *AppBot) updateBot(c *wkhttp.Context) {
 			Token:       bot.Token,
 			CreatedBy:   bot.CreatedBy,
 		})
+		ab.syncAuthRegistry(bot.Token, bot.UID, bot.Scope, bot.SpaceID)
 	}
 
 	// Sync display_name to user table (for SDK avatar/name resolution)
@@ -930,11 +931,12 @@ func (ab *AppBot) applyBot(c *wkhttp.Context) {
 	}
 	if count == 1 {
 		// First request in this window — set TTL (fixed window, not sliding).
-		// TODO: If SetExpire fails here (Redis partial failure after successful INCR),
-		// the key persists without TTL and user is permanently rate-limited.
-		// Mitigation: key will be cleaned up on Redis restart. For a Lua-atomic
-		// solution, the redis client wrapper needs an Eval method.
-		ab.ctx.GetRedisConn().SetExpire(rateLimitKey, time.Minute)
+		// If SetExpire fails, DEL the key to prevent permanent rate-limiting.
+		if expErr := ab.ctx.GetRedisConn().SetExpire(rateLimitKey, time.Minute); expErr != nil {
+			ab.Error("rate limit SetExpire failed, deleting key to prevent permanent block",
+				zap.Error(expErr), zap.String("key", rateLimitKey))
+			ab.ctx.GetRedisConn().Del(rateLimitKey)
+		}
 	}
 	if count > 10 {
 		c.ResponseError(errors.New("请求过于频繁，请稍后再试"))

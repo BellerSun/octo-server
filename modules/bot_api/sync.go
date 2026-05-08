@@ -53,10 +53,10 @@ func (ba *BotAPI) syncMessages(c *wkhttp.Context) {
 			return
 		}
 		var count int
-		_, err := ba.db.session.SelectBySql(
+		err := ba.db.session.SelectBySql(
 			"SELECT COUNT(*) FROM group_member WHERE group_no=? AND uid=? AND is_deleted=0",
 			req.ChannelID, robotID,
-		).Load(&count)
+		).LoadOne(&count)
 		if err != nil {
 			ba.Error("failed to query group members", zap.Error(err))
 			c.ResponseError(errors.New("failed to query group members"))
@@ -109,10 +109,10 @@ func (ba *BotAPI) syncMessages(c *wkhttp.Context) {
 			return
 		}
 		var count int
-		_, err := ba.db.session.SelectBySql(
+		err := ba.db.session.SelectBySql(
 			"SELECT COUNT(*) FROM group_member WHERE group_no=? AND uid=? AND is_deleted=0",
 			parts[0], robotID,
-		).Load(&count)
+		).LoadOne(&count)
 		if err != nil {
 			ba.Error("failed to query group members", zap.Error(err))
 			c.ResponseError(errors.New("failed to query group members"))

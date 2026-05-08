@@ -62,7 +62,7 @@ func (ba *BotAPI) getGroupInfo(c *wkhttp.Context) {
 	groupNo := c.Param("group_no")
 
 	var count int
-	_, err := ba.db.session.SelectBySql("SELECT COUNT(*) FROM group_member WHERE group_no=? AND uid=? AND is_deleted=0", groupNo, robotID).Load(&count)
+	err := ba.db.session.SelectBySql("SELECT COUNT(*) FROM group_member WHERE group_no=? AND uid=? AND is_deleted=0", groupNo, robotID).LoadOne(&count)
 	if err != nil || count == 0 {
 		c.ResponseError(errors.New("bot is not a member of this group"))
 		return
@@ -99,7 +99,7 @@ func (ba *BotAPI) getGroupMembers(c *wkhttp.Context) {
 	groupNo := c.Param("group_no")
 
 	var count int
-	_, err := ba.db.session.SelectBySql("SELECT COUNT(*) FROM group_member WHERE group_no=? AND uid=? AND is_deleted=0", groupNo, robotID).Load(&count)
+	err := ba.db.session.SelectBySql("SELECT COUNT(*) FROM group_member WHERE group_no=? AND uid=? AND is_deleted=0", groupNo, robotID).LoadOne(&count)
 	if err != nil || count == 0 {
 		c.ResponseError(errors.New("bot is not a member of this group"))
 		return
