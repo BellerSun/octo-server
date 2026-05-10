@@ -621,6 +621,13 @@ func (u *User) uploadAvatar(c *wkhttp.Context) {
 		c.ResponseError(errors.New("修改用户是否修改头像错误！"))
 		return
 	}
+	// Sync avatar path to app_bot record (best-effort, non-blocking).
+	// After upload, app_bot.avatar should reflect the upload endpoint path
+	// so that App Bot API responses return the correct avatar URL.
+	u.ctx.DB().UpdateBySql(
+		"UPDATE app_bot SET avatar=? WHERE uid=?",
+		u.ctx.GetConfig().GetAvatarPath(targetUID), targetUID,
+	).Exec()
 	c.ResponseOK()
 }
 
